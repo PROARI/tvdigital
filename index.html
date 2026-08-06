@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#4f46e5">
+  <meta name="description" content="TV DIGITAL LIBRE - Aplicación IPTV profesional para Android TV, Smart TV y dispositivos móviles por Proari Systems">
+  <title>TV DIGITAL LIBRE | Proari Systems</title>
+
+  <!-- PWA Manifest & Favicons -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/jpeg" href="logo.jpg">
+  <link rel="shortcut icon" type="image/jpeg" href="logo.jpg">
+  <link rel="apple-touch-icon" href="logo.jpg">
+
+  <!-- Open Graph Meta Tags (Para Compartir Enlace en WhatsApp, Facebook, Telegram, Twitter, etc.) -->
+  <meta property="og:title" content="TV DIGITAL LIBRE | Proari Systems">
+  <meta property="og:description" content="Aplicación de televisión digital libre e IPTV en vivo con reconexión automática y canales locales.">
+  <meta property="og:image" content="logo.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1024">
+  <meta property="og:image:height" content="1024">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="TV DIGITAL LIBRE">
+
+  <!-- Meta Tags para Twitter Cards -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TV DIGITAL LIBRE | Proari Systems">
+  <meta name="twitter:description" content="Televisión digital libre, canales locales y transmisiones IPTV en vivo.">
+  <meta name="twitter:image" content="logo.jpg">
+
+  <!-- Estilos CSS -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Library HLS.js para reproducción de transmisiones .m3u8 en vivo -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+
+  <!-- ==========================================================================
+       HEADER & BRANDING
+       ========================================================================== -->
+  <header class="app-header">
+    <div class="brand-container">
+      <div class="brand-logo">
+        <img src="logo.jpg" alt="TV DIGITAL LIBRE Logo" class="brand-logo-img">
+      </div>
+      <div class="brand-titles">
+        <h1 class="app-title">TV DIGITAL LIBRE</h1>
+        <div class="proari-credit">Proari Systems</div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <!-- Indicador de Estado -->
+      <div class="connection-status">
+        <div class="status-dot"></div>
+        <span>Señal En Vivo</span>
+      </div>
+
+      <!-- Botón Instalación PWA (Condicional) -->
+      <button id="btn-pwa-install" class="btn-icon focusable" style="display: none; background: linear-gradient(135deg, var(--accent), var(--primary));">
+        <span>📲 Instalar App</span>
+      </button>
+
+      <!-- Botón de Actualizar Canales & Memoria Caché -->
+      <button id="btn-sync-app" class="btn-icon focusable" title="Sincronizar y Actualizar Memoria Caché">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+        </svg>
+        <span>Actualizar</span>
+      </button>
+
+      <!-- Botón Configurar en la esquina -->
+      <button id="btn-config" class="btn-icon focusable" title="Configurar Canales IPTV">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+        </svg>
+        <span>Configurar</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN CONTENT (REPRODUCTOR + LISTA DE CANALES)
+       ========================================================================== -->
+  <main class="main-layout">
+    
+    <!-- SECCIÓN REPRODUCTOR DE VIDEO -->
+    <section class="player-section">
+      <div id="player-container" class="player-card">
+        
+        <!-- Video Native Element -->
+        <video id="video-player" class="focusable" tabindex="0" playsinline autoplay muted></video>
+        <!-- Iframe Embed Player para YouTube, DailyMotion o Embed Codes -->
+        <iframe id="iframe-player" class="focusable" tabindex="0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="display: none;"></iframe>
+
+        <!-- Overlay Vista Previa & Ayuda Fullscreen -->
+        <div class="player-preview-overlay">
+          <div class="fullscreen-hint">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+            </svg>
+            <span>Doble Clic / Tap: Pantalla Completa</span>
+          </div>
+        </div>
+
+        <!-- Banner de Reconexión Automática Ultra-Estable -->
+        <div id="reconnect-overlay" class="reconnect-overlay hidden">
+          <div class="reconnect-spinner"></div>
+          <div class="reconnect-title">Reconectando Transmisión...</div>
+          <div id="reconnect-count-text" class="reconnect-desc">Restableciendo flujo de señal IPTV</div>
+        </div>
+
+      </div>
+
+      <!-- Barra de Información y Controles del Canal Actual -->
+      <div class="player-controls-bar">
+        <div class="now-playing-info">
+          <img id="player-channel-logo" class="now-playing-logo" src="https://upload.wikimedia.org/wikipedia/commons/e/e5/NASA_logo.svg" alt="Canal Actual">
+          <div>
+            <div id="player-channel-title" class="now-playing-title">Cargando Canal...</div>
+            <div id="player-channel-category" class="now-playing-category">Televisión Digital</div>
+          </div>
+        </div>
+
+        <div class="control-buttons">
+          <button id="btn-mute" class="btn-icon focusable">🔇 Unmute</button>
+          <button id="btn-fullscreen" class="btn-icon focusable" title="Pantalla Completa">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+            </svg>
+            <span>Pantalla Completa</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECCIÓN CANALES Y BÚSQUEDA -->
+    <section class="channels-section">
+      
+      <!-- Navegación por Categorías -->
+      <div id="categories-container" class="categories-scroll">
+        <!-- Renderizado Dinámico de Categorías -->
+      </div>
+
+      <!-- Buscador de Canales -->
+      <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24">
+          <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+        <input type="text" id="search-input" class="search-input focusable" placeholder="Buscar canal local o en vivo...">
+      </div>
+
+      <!-- Grilla de Canales IPTV -->
+      <div id="channels-grid" class="channels-grid">
+        <!-- Renderizado Dinámico de Tarjetas de Canales -->
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ==========================================================================
+       MODAL 1: AUTENTICACIÓN CON CONTRASEÑA (4206371Luis*)
+       ========================================================================== -->
+  <div id="auth-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="var(--accent)">
+            <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+          </svg>
+          <span>Acceso Restringido - Configuración</span>
+        </div>
+        <button class="modal-close-btn close-modal-btn">&times;</button>
+      </div>
+      
+      <form id="auth-form">
+        <div class="modal-body">
+          <p style="color: var(--text-muted); font-size: 0.95rem;">Ingresa la contraseña de administrador para poder agregar, modificar o eliminar canales IPTV.</p>
+          
+          <div class="form-group">
+            <label for="admin-password-input" class="form-label">Contraseña de Administración</label>
+            <input type="password" id="admin-password-input" class="form-input focusable" placeholder="Ingresa contraseña..." required>
+          </div>
+
+          <div id="auth-error-msg" style="display: none; color: var(--danger); font-size: 0.85rem; font-weight: 600;"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary close-modal-btn focusable">Cancelar</button>
+          <button type="submit" class="btn-primary focusable">Ingresar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 2: GESTOR DE CANALES IPTV (ADMINISTRACIÓN)
+       ========================================================================== -->
+  <div id="admin-modal" class="modal-backdrop">
+    <div class="modal-box" style="max-width: 680px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>⚙️ Panel de Gestión IPTV</span>
+        </div>
+        <button class="modal-close-btn close-modal-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button id="btn-add-channel" class="btn-primary focusable">➕ Agregar Canal</button>
+          <button id="btn-import-m3u" class="btn-secondary focusable">📥 Importar Lista M3U</button>
+          <button id="btn-reset-default" class="btn-secondary focusable" style="color: var(--warning);">🔄 Restablecer Predeterminados</button>
+        </div>
+
+        <h4 style="margin-top: 1rem; color: var(--text-muted);">Canales Registrados:</h4>
+        <div id="admin-channel-list" class="admin-channel-list">
+          <!-- Lista Dinámica de Canales para Edición/Eliminación -->
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary close-modal-btn focusable">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 3: FORMULARIO DE AGREGAR / EDITAR CANAL
+       ========================================================================== -->
+  <div id="channel-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div id="channel-modal-title" class="modal-title">Agregar Nuevo Canal IPTV</div>
+        <button class="modal-close-btn close-modal-btn">&times;</button>
+      </div>
+
+      <form id="channel-form">
+        <input type="hidden" id="ch-edit-id">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="ch-name-input" class="form-label">Nombre del Canal</label>
+            <input type="text" id="ch-name-input" class="form-input focusable" placeholder="Ej. Canal Local 10 HD" required>
+          </div>
+
+          <div class="form-group">
+            <label for="ch-cat-input" class="form-label">Categoría</label>
+            <select id="ch-cat-input" class="form-select focusable" required>
+              <option value="Locales">Locales</option>
+              <option value="Noticias">Noticias</option>
+              <option value="Deportes">Deportes</option>
+              <option value="Entretenimiento">Entretenimiento</option>
+              <option value="Cine">Cine</option>
+              <option value="Música">Música</option>
+              <option value="Infantil">Infantil</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="ch-url-input" class="form-label">URL del Stream o Código Embed (M3U8, MP4, YouTube, DailyMotion, Iframe)</label>
+            <textarea id="ch-url-input" class="form-textarea focusable" rows="3" placeholder="Pega aquí el enlace (M3U8, MP4, YouTube, DailyMotion) o el código embed <iframe>...</iframe>" required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="ch-logo-input" class="form-label">URL del Logo (Opcional)</label>
+            <input type="url" id="ch-logo-input" class="form-input focusable" placeholder="https://servidor.com/logo.png">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary close-modal-btn focusable">Cancelar</button>
+          <button type="submit" class="btn-primary focusable">Guardar Canal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- FOOTER Y CRÉDITO -->
+  <footer class="app-footer">
+    TV DIGITAL LIBRE &bull; Sistema IPTV &bull; Desarrollado por <span>Proari Systems</span>
+  </footer>
+
+  <!-- TOAST NOTIFICATIONS -->
+  <div id="toast-notification" class="toast-notification"></div>
+
+  <!-- Scripts -->
+  <script src="channels.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
