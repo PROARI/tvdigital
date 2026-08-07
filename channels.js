@@ -1,7 +1,7 @@
 // Configuración de Lista M3U Predeterminada de Dropbox
-const DEFAULT_M3U_URL = "https://www.dropbox.com/scl/fi/hj3xwhhhljekuijgc9de4/pando.m3u?rlkey=mjuqwqz5m5mpy0aem0q9c1ukv&st=t8mc876i&dl=1";
+const DEFAULT_M3U_URL = "https://dl.dropbox.com/scl/fi/hj3xwhhhljekuijgc9de4/pando.m3u?rlkey=mjuqwqz5m5mpy0aem0q9c1ukv&st=flz3c65c&dl=1";
 
-// Canales por defecto (Canales del enlace M3U de Pando)
+// Canales por defecto (Sincronizados del enlace M3U de Pando)
 const DEFAULT_CHANNELS = [
     {
         id: "ch-pando-1",
@@ -34,6 +34,14 @@ const DEFAULT_CHANNELS = [
         url: "https://live20.bozztv.com/giatvplayout7/giatv-210534/playlist.m3u8",
         logo: "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEj4WJhhWCQAzZD-XKpk4rD5M1QwssSN7LnJSVzmwD71BjGhcxg2_BQu4X38ZJ05wwIFh2EmYcxwTZW2YSEx67cKq4jvwGc3v2MaVSYtcZpYB0Pt5Vu7S9V_6nWmXpwXuf1Z-7HDyCQVNaXNSjpNL3nW6yHidAvPlCu-uyp8TGawR2FdyVs3ZPMbV6xtJzc5/s512/cuadrado.jpg",
         description: "Transmisión en vivo ESPECTACULAR tv."
+    },
+    {
+        id: "ch-pando-5",
+        name: "CANTINAZO tv",
+        category: "LOCALES",
+        url: "https://live20.bozztv.com/giatvplayout7/giatv-210566/playlist.m3u8",
+        logo: "https://www.appcreator24.com/srv/imgs/seccs/36312056_ico.png?ts=1786115203",
+        description: "Transmisión en vivo CANTINAZO tv."
     }
 ];
 

@@ -6,8 +6,8 @@
 
 // Configuración Global y Estado
 const ADMIN_PASSWORD = "4206371Luis*";
-const STORAGE_KEY = "tv_digital_libre_channels_v4";
-const M3U_URL_KEY = "tv_digital_libre_m3u_url_v4";
+const STORAGE_KEY = "tv_digital_libre_channels_v5";
+const M3U_URL_KEY = "tv_digital_libre_m3u_url_v5";
 
 let channelsList = [];
 let activeChannel = null;
@@ -137,12 +137,12 @@ function loadChannels() {
   // Sincronización automática de canales al iniciar
   syncM3UChannels(false);
 
-  // Temporizador de sincronización en tiempo real (cada 60s)
+  // Temporizador de sincronización en tiempo real (cada 30s)
   if (autoSyncTimer) clearInterval(autoSyncTimer);
   autoSyncTimer = setInterval(() => {
     console.log('[Auto-Sync] Comprobando lista M3U en tiempo real...');
     syncM3UChannels(false);
-  }, 60000);
+  }, 30000);
 }
 
 function saveChannels() {
