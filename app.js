@@ -6,6 +6,7 @@
 // Configuración Global y Estado
 const ADMIN_PASSWORD = "4206371Luis*";
 const STORAGE_KEY = "tv_digital_libre_channels_v2";
+const REMOTE_M3U_URL = "https://www.dropbox.com/scl/fi/hj3xwhhhljekuijgc9de4/pando.m3u?rlkey=mjuqwqz5m5mpy0aem0q9c1ukv&st=iut2dcib&dl=1";
 
 let channelsList = [];
 let activeChannel = null;
@@ -33,15 +34,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupTVNavigation();
   
-  // Buscar automáticamente el archivo channels.json en el hosting al iniciar la app
-  await autoFetchHostingChannelsJSON(false);
+  // 1. Cargar automáticamente la lista M3U oficial de Dropbox
+  await fetchRemoteM3UPlaylist(false);
 
-  // Búsqueda periódica en segundo plano cada 3 minutos para mantener la app 100% sincronizada con el hosting
+  // 2. Búsqueda periódica en segundo plano cada 3 minutos para mantener sincronizada la lista M3U
   setInterval(() => {
-    autoFetchHostingChannelsJSON(false);
+    fetchRemoteM3UPlaylist(false);
   }, 180000);
 
-  // Seleccionar primer canal por defecto al cargar
+  // Seleccionar primer canal por defecto al cargar si hay canales
   if (channelsList.length > 0) {
     playChannel(channelsList[0]);
   }
@@ -856,6 +857,87 @@ function importChannelsFromJSONFile(file) {
   reader.readAsText(file);
 }
 
+// Función para cargar automáticamente la lista M3U desde la URL remota de Dropbox
+async function fetchRemoteM3UPlaylist(showToast = false) {
+  try {
+    const fetchUrl = REMOTE_M3U_URL + '&t=' + Date.now();
+    const response = await fetch(fetchUrl, { cache: 'no-store' });
+    if (response.ok) {
+      const m3uText = await response.text();
+      const parsedChannels = parseM3UText(m3uText);
+
+      if (parsedChannels.length > 0) {
+        const savedLocal = getSavedUserChannels() || [];
+        const map = new Map();
+
+        // 1. Agregar canales que vienen de la lista M3U de Dropbox
+        parsedChannels.forEach(ch => map.set(ch.id, ch));
+        // 2. Preservar canales agregados o editados por el usuario
+        savedLocal.forEach(ch => map.set(ch.id, ch));
+
+        channelsList = Array.from(map.values());
+        saveChannels();
+        renderCategories();
+        renderChannels();
+
+        if (showToast) {
+          showNotificationToast("✅ ¡Se jalaron " + parsedChannels.length + " canales en vivo desde la lista PANDO M3U!");
+        }
+        return true;
+      }
+    }
+  } catch (e) {
+    console.warn("No se pudo jalar la lista M3U remota (modo offline):", e);
+  }
+  return false;
+}
+
+function parseM3UText(m3uText) {
+  const lines = m3uText.split('\n');
+  const result = [];
+  let tempName = '';
+  let tempLogo = '';
+  let tempGroup = 'Locales';
+
+  lines.forEach((line) => {
+    line = line.trim();
+    if (line.startsWith('#EXTINF:')) {
+      const logoMatch = line.match(/tvg-logo="([^"]+)"/);
+      tempLogo = logoMatch ? logoMatch[1] : '';
+
+      const groupMatch = line.match(/group-title="([^"]+)"/);
+      if (groupMatch) {
+        let group = groupMatch[1].toUpperCase();
+        if (group.includes('LOCAL')) tempGroup = 'Locales';
+        else if (group.includes('MUSIC') || group.includes('MÚSICA')) tempGroup = 'Música';
+        else if (group.includes('NOTICIA') || group.includes('NEWS')) tempGroup = 'Noticias';
+        else if (group.includes('DEPORTE') || group.includes('SPORT')) tempGroup = 'Deportes';
+        else tempGroup = groupMatch[1];
+      } else {
+        tempGroup = 'Locales';
+      }
+
+      const commaParts = line.split(',');
+      tempName = commaParts[commaParts.length - 1].trim();
+    } else if (line.startsWith('http://') || line.startsWith('https://')) {
+      if (tempName) {
+        const safeId = 'ch-m3u-' + tempName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        result.push({
+          id: safeId,
+          name: tempName,
+          category: tempGroup || 'Locales',
+          url: line,
+          logo: tempLogo || 'logo.jpg'
+        });
+        tempName = '';
+        tempLogo = '';
+      }
+    }
+  });
+
+  return result;
+}
+
 // Función que busca automáticamente el archivo channels.json en el hosting o servidor
 async function autoFetchHostingChannelsJSON(showToast = false) {
   try {
@@ -866,9 +948,7 @@ async function autoFetchHostingChannelsJSON(showToast = false) {
         const savedLocal = getSavedUserChannels() || [];
         const map = new Map();
 
-        // 1. Agregar canales que están en el archivo channels.json del hosting
         hostingChannels.forEach(ch => map.set(ch.id, ch));
-        // 2. Preservar canales agregados o modificados localmente por el usuario
         savedLocal.forEach(ch => map.set(ch.id, ch));
 
         channelsList = Array.from(map.values());
@@ -888,7 +968,7 @@ async function autoFetchHostingChannelsJSON(showToast = false) {
   return false;
 }
 
-// Función principal de Actualización: Jala y sincroniza TODOS los canales agregados y guardados
+// Función principal de Actualización: Jala de la lista M3U oficial de Dropbox y del hosting
 async function syncAndCacheChannels() {
   const syncBtn = document.getElementById('btn-sync-app');
   if (syncBtn) {
@@ -897,15 +977,17 @@ async function syncAndCacheChannels() {
   }
 
   try {
-    // 1. Buscar automáticamente el archivo channels.json en el hosting
+    // 1. Jalar automáticamente la lista M3U oficial de Dropbox
+    const fetchedM3U = await fetchRemoteM3UPlaylist(false);
+    // 2. Buscar archivo channels.json local/hosting
     const fetchedHosting = await autoFetchHostingChannelsJSON(false);
 
-    // 2. Notificar al Service Worker para actualizar el caché PWA
+    // 3. Notificar al Service Worker para actualizar el caché PWA
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ action: 'SKIP_WAITING_AND_UPDATE' });
     }
 
-    // 3. Forzar actualización del cache storage
+    // 4. Forzar actualización del cache storage
     if ('caches' in window) {
       try {
         const cache = await caches.open('tv-digital-libre-v3');
@@ -923,12 +1005,12 @@ async function syncAndCacheChannels() {
       }
     }
 
-    // 4. Re-renderizar categorías y grilla de canales al instante
+    // 5. Re-renderizar categorías y grilla de canales al instante
     renderCategories();
     renderChannels();
 
-    if (fetchedHosting) {
-      showNotificationToast('✅ ¡Canales sincronizados y jalados correctamente desde el hosting (channels.json)!');
+    if (fetchedM3U || fetchedHosting) {
+      showNotificationToast('✅ ¡Lista de canales PANDO M3U y servidor jalados y actualizados correctamente!');
     } else {
       showNotificationToast('✅ ¡Todos tus canales guardados y agregados han sido jalados y actualizados!');
     }
