@@ -519,12 +519,12 @@ body {
   fill: var(--text-dim);
 }
 
-/* Grilla de Canales */
+/* Lista de Canales (Horizontal Compacta: Logo a la izquierda, Nombre a la derecha) */
 .channels-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem;
-  max-height: 620px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 560px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -532,16 +532,18 @@ body {
 .channel-card {
   background: var(--bg-card);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  padding: 1rem;
+  border-radius: 12px;
+  padding: 0.45rem 0.75rem;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  text-align: center;
+  text-align: left;
   gap: 0.75rem;
   cursor: pointer;
   position: relative;
   transition: var(--transition-fast);
+  width: 100%;
+  min-height: 46px;
 }
 
 .channel-card:hover,
@@ -549,34 +551,44 @@ body {
 .channel-card.active {
   background: var(--bg-card-hover);
   border-color: var(--accent);
-  transform: scale(var(--tv-scale));
-  box-shadow: var(--focus-ring);
+  transform: translateX(4px);
+  box-shadow: 0 4px 15px rgba(6, 182, 212, 0.25);
   z-index: 5;
 }
 
-.channel-card.active::before {
-  content: 'REPRODUCIENDO';
+.channel-card.active {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: var(--accent);
+}
+
+.channel-card.active::after {
+  content: '▶ EN VIVO';
   position: absolute;
-  top: 6px;
-  right: 6px;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   background: var(--accent);
   color: #000;
   font-size: 0.6rem;
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
+  letter-spacing: 0.5px;
 }
 
 .channel-logo-wrapper {
-  width: 64px;
-  height: 64px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  padding: 3px;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .channel-logo-img {
@@ -585,22 +597,32 @@ body {
   object-fit: contain;
 }
 
+.channel-info-wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  padding-right: 65px;
+}
+
 .channel-name {
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   font-weight: 700;
   line-height: 1.2;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-main);
 }
 
 .channel-category-tag {
-  font-size: 0.72rem;
-  color: var(--text-dim);
+  font-size: 0.65rem;
+  color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
+  margin-top: 1px;
 }
 
 /* ==========================================================================
@@ -836,4 +858,54 @@ body {
 .app-footer span {
   color: var(--accent);
   font-weight: 700;
+}
+
+/* Ajustes de diseño uniforme para dispositivos móviles */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0.85rem 1rem;
+  }
+
+  .app-title {
+    font-size: 1.2rem;
+  }
+
+  .brand-logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .main-layout {
+    padding: 0.85rem;
+    gap: 1rem;
+  }
+
+  .player-card {
+    border-radius: 14px;
+  }
+
+  .player-controls-bar {
+    padding: 0.75rem 1rem;
+  }
+
+  .now-playing-title {
+    font-size: 1rem;
+  }
+
+  .btn-icon {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.85rem;
+  }
+
+  .channels-grid {
+    max-height: 480px;
+  }
+
+  .channel-card {
+    padding: 0.4rem 0.65rem;
+  }
+
+  .channel-name {
+    font-size: 0.82rem;
+  }
 }

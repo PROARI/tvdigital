@@ -294,8 +294,10 @@ function renderChannels(filterText = '') {
       <div class="channel-logo-wrapper">
         <img class="channel-logo-img" src="${ch.logo}" alt="${ch.name}" onerror="this.src='logo.jpg'">
       </div>
-      <div class="channel-name">${ch.name}</div>
-      <div class="channel-category-tag">${ch.category}</div>
+      <div class="channel-info-wrapper">
+        <div class="channel-name">${ch.name}</div>
+        <div class="channel-category-tag">${ch.category}</div>
+      </div>
     </div>
   `).join('');
 
