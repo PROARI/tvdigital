@@ -1,17 +1,21 @@
 /* ==========================================================================
    TV DIGITAL LIBRE - App Engine (Proari Systems)
-   Reproductor IPTV, Hls.js, YouTube/DailyMotion/Embeds, Reconexión, Contraseña Admin, Reordenamiento PWA
+   Reproductor IPTV, Hls.js, YouTube/DailyMotion/Embeds, Reconexión,
+   Sincronización M3U Automática en Tiempo Real (Dropbox Pando), PWA
    ========================================================================== */
 
 // Configuración Global y Estado
 const ADMIN_PASSWORD = "4206371Luis*";
-const STORAGE_KEY = "tv_digital_libre_channels_v2";
-const REMOTE_M3U_URL = "https://www.dropbox.com/scl/fi/hj3xwhhhljekuijgc9de4/pando.m3u?rlkey=mjuqwqz5m5mpy0aem0q9c1ukv&st=iut2dcib&dl=1";
+const STORAGE_KEY = "tv_digital_libre_channels_v3";
+const M3U_URL_KEY = "tv_digital_libre_m3u_url_v3";
 
 let channelsList = [];
 let activeChannel = null;
 let currentCategory = "Todos";
 let hlsPlayer = null;
+
+let currentM3uUrl = localStorage.getItem(M3U_URL_KEY) || DEFAULT_M3U_URL;
+let autoSyncTimer = null;
 
 // Control de Reconexión Automática
 let reconnectAttempts = 0;
@@ -27,25 +31,12 @@ let videoElement, iframeElement, playerTitle, playerCategory, playerLogo, liveBa
 let channelsGrid, categoryContainer, searchInput;
 let authModal, adminModal, channelModal, passwordInput, authErrorMsg;
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   initDOMReferences();
   initPWA();
   loadChannels();
   setupEventListeners();
   setupTVNavigation();
-  
-  // 1. Cargar automáticamente la lista M3U oficial de Dropbox
-  await fetchRemoteM3UPlaylist(false);
-
-  // 2. Búsqueda periódica en segundo plano cada 3 minutos para mantener sincronizada la lista M3U
-  setInterval(() => {
-    fetchRemoteM3UPlaylist(false);
-  }, 180000);
-
-  // Seleccionar primer canal por defecto al cargar si hay canales
-  if (channelsList.length > 0) {
-    playChannel(channelsList[0]);
-  }
 });
 
 /* ==========================================================================
@@ -102,45 +93,169 @@ function initPWA() {
 }
 
 /* ==========================================================================
-   GESTIÓN DE CANALES (PERSISTENCIA Y CATEGORÍAS)
+   GESTIÓN DE CANALES Y SINCRONIZACIÓN M3U EN TIEMPO REAL
    ========================================================================== */
 
-function getSavedUserChannels() {
-  const keys = ["tv_digital_libre_channels_v2", "tv_digital_libre_channels_v1", "tv_digital_libre_channels"];
-  for (let key of keys) {
-    const data = localStorage.getItem(key);
-    if (data) {
-      try {
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch (e) {
-        console.warn('Error leyendo ' + key, e);
-      }
-    }
-  }
-  return null;
-}
-
 function loadChannels() {
-  const saved = getSavedUserChannels();
-  if (saved && saved.length > 0) {
-    channelsList = saved;
+  const savedData = localStorage.getItem(STORAGE_KEY);
+  if (savedData) {
+    try {
+      channelsList = JSON.parse(savedData);
+    } catch (e) {
+      console.error('Error leyendo canales guardados:', e);
+      channelsList = [...DEFAULT_CHANNELS];
+    }
   } else {
     channelsList = [...DEFAULT_CHANNELS];
+    saveChannels();
   }
-  saveChannels();
+  
   renderCategories();
   renderChannels();
+
+  // Seleccionar primer canal automáticamente
+  if (channelsList.length > 0 && !activeChannel) {
+    playChannel(channelsList[0]);
+  }
+
+  // Sincronización automática de canales al iniciar
+  syncM3UChannels(false);
+
+  // Iniciar temporizador de sincronización en tiempo real (cada 60 segundos)
+  if (autoSyncTimer) clearInterval(autoSyncTimer);
+  autoSyncTimer = setInterval(() => {
+    console.log('[Auto-Sync] Actualizando lista M3U en tiempo real...');
+    syncM3UChannels(false);
+  }, 60000);
 }
 
 function saveChannels() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(channelsList));
 }
 
+function fixDropboxUrl(url) {
+  if (!url) return '';
+  url = url.trim();
+  if (url.includes('dropbox.com')) {
+    return url.replace(/dl=0/g, 'dl=1').replace(/raw=0/g, 'raw=1');
+  }
+  return url;
+}
+
+async function fetchM3UData(url) {
+  const targetUrl = fixDropboxUrl(url);
+  
+  // 1. Intento Directo
+  try {
+    const res = await fetch(targetUrl, { cache: 'no-cache' });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
+        return text;
+      }
+    }
+  } catch (e) {
+    console.warn('[M3U Sync] Direct fetch failed, trying proxy...', e);
+  }
+
+  // 2. Intento vía Proxy CORS (AllOrigins)
+  try {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxyUrl, { cache: 'no-cache' });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
+        return text;
+      }
+    }
+  } catch (e) {
+    console.warn('[M3U Sync] AllOrigins proxy failed, trying CorsProxy...', e);
+  }
+
+  // 3. Intento vía Proxy CORS Alternativo (CorsProxy.io)
+  try {
+    const proxyUrl2 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxyUrl2, { cache: 'no-cache' });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
+        return text;
+      }
+    }
+  } catch (e) {
+    console.error('[M3U Sync] Fallaron todos los intentos de descarga M3U:', e);
+  }
+
+  return null;
+}
+
+async function syncM3UChannels(showToast = false) {
+  const syncBtn = document.getElementById('btn-sync-app');
+  if (syncBtn) {
+    syncBtn.classList.add('spinning');
+    syncBtn.disabled = true;
+  }
+
+  try {
+    const m3uText = await fetchM3UData(currentM3uUrl);
+    if (m3uText) {
+      const parsed = parseM3U(m3uText);
+      if (parsed && parsed.length > 0) {
+        channelsList = parsed;
+        saveChannels();
+        renderCategories();
+        renderChannels();
+
+        // Si no hay canal activo o el canal activo ya no está, reproducir el primero
+        if (!activeChannel || !channelsList.some(c => c.id === activeChannel.id)) {
+          if (channelsList.length > 0) {
+            playChannel(channelsList[0]);
+          }
+        }
+
+        if (showToast) {
+          showNotificationToast(`✅ Sincronizados ${parsed.length} canales en tiempo real desde M3U`);
+        }
+        console.log(`[M3U Sync] Éxito: ${parsed.length} canales actualizados.`);
+        return true;
+      }
+    }
+
+    if (showToast) {
+      showNotificationToast('⚠️ No se pudo actualizar la lista M3U. Usando canales locales.');
+    }
+  } catch (err) {
+    console.error('[M3U Sync] Error:', err);
+    if (showToast) {
+      showNotificationToast('⚠️ Error al conectar con la lista M3U remota.');
+    }
+  } finally {
+    if (syncBtn) {
+      syncBtn.classList.remove('spinning');
+      syncBtn.disabled = false;
+    }
+  }
+  return false;
+}
+
+/* ==========================================================================
+   RENDERIZADO DE CATEGORÍAS Y CANALES
+   ========================================================================== */
+
 function renderCategories() {
-  const categories = ["Todos", "Locales", "Noticias", "Deportes", "Entretenimiento", "Cine", "Música", "Infantil"];
+  const categoriesSet = new Set(["Todos"]);
+  channelsList.forEach(ch => {
+    if (ch.category && ch.category.trim()) {
+      categoriesSet.add(ch.category.trim());
+    }
+  });
+
+  const categories = Array.from(categoriesSet);
+
+  if (!categories.includes(currentCategory)) {
+    currentCategory = "Todos";
+  }
+
   categoryContainer.innerHTML = categories.map(cat => `
     <button class="category-pill focusable ${cat === currentCategory ? 'active' : ''}" data-category="${cat}">
       ${cat}
@@ -152,7 +267,7 @@ function renderCategories() {
       currentCategory = e.target.dataset.category;
       document.querySelectorAll('.category-pill').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
-      renderChannels();
+      renderChannels(searchInput ? searchInput.value : '');
     });
   });
 }
@@ -168,7 +283,7 @@ function renderChannels(filterText = '') {
     channelsGrid.innerHTML = `
       <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted);">
         <p style="font-size: 1.2rem; font-weight: 600;">No se encontraron canales</p>
-        <p style="font-size: 0.9rem;">Prueba con otra categoría o agrega un nuevo canal en Configurar.</p>
+        <p style="font-size: 0.9rem;">Prueba con otra categoría o presiona "Actualizar" para refrescar la lista M3U.</p>
       </div>
     `;
     return;
@@ -204,7 +319,7 @@ function parseEmbedOrStreamUrl(input) {
   if (!input) return { type: 'video', url: '' };
   input = input.trim();
 
-  // 1. Si se ingresó un código embed completo: <iframe ... src="..." ...></iframe>
+  // 1. Código embed completo: <iframe ... src="..." ...></iframe>
   const iframeSrcMatch = input.match(/src=["']([^"']+)["']/i);
   if (iframeSrcMatch) {
     let srcUrl = iframeSrcMatch[1];
@@ -214,7 +329,7 @@ function parseEmbedOrStreamUrl(input) {
     return { type: 'embed', url: srcUrl };
   }
 
-  // 2. YouTube Links (watch?v=, youtu.be/, live/, embed/)
+  // 2. YouTube Links
   const ytMatch = input.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
   if (ytMatch) {
     const videoId = ytMatch[1];
@@ -224,7 +339,7 @@ function parseEmbedOrStreamUrl(input) {
     };
   }
 
-  // 3. DailyMotion Links (dailymotion.com/video/, dai.ly/)
+  // 3. DailyMotion Links
   const dmMatch = input.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/i);
   if (dmMatch) {
     const videoId = dmMatch[1];
@@ -253,7 +368,7 @@ function parseEmbedOrStreamUrl(input) {
 }
 
 /* ==========================================================================
-   REPRODUCTOR DE VIDEO Y RECONEXIÓN AUTOMÁTICA ULTRA-ESTABLE
+   REPRODUCTOR DE VIDEO Y RECONEXIÓN AUTOMÁTICA
    ========================================================================== */
 
 function playChannel(channel) {
@@ -274,7 +389,6 @@ function playChannel(channel) {
   }
 
   if (parsed.type === 'embed') {
-    // Reproducción mediante Iframe Embed (YouTube, DailyMotion, Vimeo, Iframe Personalizado)
     if (videoElement) {
       videoElement.pause();
       videoElement.style.display = 'none';
@@ -284,7 +398,6 @@ function playChannel(channel) {
       iframeElement.src = parsed.url;
     }
   } else {
-    // Reproducción mediante Video HTML5 / Hls.js (.m3u8, .mp4, etc.)
     if (iframeElement) {
       iframeElement.style.display = 'none';
       iframeElement.src = '';
@@ -309,7 +422,7 @@ function playChannel(channel) {
       hlsPlayer.attachMedia(videoElement);
 
       hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
-        playVideoWithAudio();
+        videoElement.play().catch(err => console.log('Autoplay bloqueado por el navegador:', err));
       });
 
       hlsPlayer.on(Hls.Events.ERROR, (event, data) => {
@@ -333,42 +446,11 @@ function playChannel(channel) {
 
     } else {
       videoElement.src = url;
-      playVideoWithAudio();
+      videoElement.play().catch(err => console.log('Autoplay bloqueado:', err));
     }
   }
-}
 
-// Función para reproducir el canal directamente con audio activo
-function playVideoWithAudio() {
-  if (!videoElement) return;
-  
-  // Activar audio
-  videoElement.muted = false;
-  videoElement.volume = 1.0;
-
-  const btnMute = document.getElementById('btn-mute');
-  if (btnMute) btnMute.textContent = '🔊 Audio Activo';
-
-  const playPromise = videoElement.play();
-  if (playPromise !== undefined) {
-    playPromise.catch(err => {
-      console.log('Autoplay directo restringido por el navegador. Reproduciendo y activando audio:', err);
-      videoElement.muted = true;
-      videoElement.play().then(() => {
-        // En el primer toque/clic o navegación del usuario, activar audio inmediatamente
-        const enableAudio = () => {
-          videoElement.muted = false;
-          if (btnMute) btnMute.textContent = '🔊 Audio Activo';
-          document.removeEventListener('click', enableAudio);
-          document.removeEventListener('keydown', enableAudio);
-          document.removeEventListener('touchstart', enableAudio);
-        };
-        document.addEventListener('click', enableAudio, { once: true });
-        document.addEventListener('keydown', enableAudio, { once: true });
-        document.addEventListener('touchstart', enableAudio, { once: true });
-      });
-    });
-  }
+  renderChannels(searchInput ? searchInput.value : '');
 }
 
 function setupVideoEvents() {
@@ -399,13 +481,11 @@ function setupVideoEvents() {
     });
   }
 
-  // Doble clic también en el contenedor del reproductor para soporte con iframes
   const playerCard = document.getElementById('player-container');
   if (playerCard) {
     playerCard.addEventListener('dblclick', toggleFullscreen);
   }
 
-  // Escuchar cambios de Pantalla Completa para ocultar anuncios/hints
   const handleFullscreenState = () => {
     const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
     if (playerCard) {
@@ -444,7 +524,7 @@ function triggerAutoReconnect() {
     }, delay);
   } else {
     if (reconnectCountText) {
-      reconnectCountText.textContent = `No se pudo conectar con la señal. Por favor intenta de nuevo más tarde o cambia de canal.`;
+      reconnectCountText.textContent = `No se pudo conectar con la señal. Intenta de nuevo o cambia de canal.`;
     }
     setTimeout(() => {
       isReconnecting = false;
@@ -489,10 +569,10 @@ function setupEventListeners() {
     btnConfig.addEventListener('click', openAuthModal);
   }
 
-  // Botón Sincronizar y Actualizar Caché PWA
+  // Botón Sincronizar M3U en tiempo real desde Header
   const btnSync = document.getElementById('btn-sync-app');
   if (btnSync) {
-    btnSync.addEventListener('click', syncAndCacheChannels);
+    btnSync.addEventListener('click', () => syncM3UChannels(true));
   }
 
   const authForm = document.getElementById('auth-form');
@@ -518,7 +598,7 @@ function setupEventListeners() {
     btnMute.addEventListener('click', () => {
       if (videoElement) {
         videoElement.muted = !videoElement.muted;
-        btnMute.textContent = videoElement.muted ? '🔇 Silenciado' : '🔊 Audio Activo';
+        btnMute.textContent = videoElement.muted ? '🔇 Unmute' : '🔊 Silenciar';
       }
     });
   }
@@ -562,7 +642,7 @@ function closeAllModals() {
 }
 
 /* ==========================================================================
-   PANEL CRUD, REORDENAMIENTO MANUAL DE CANALES E IMPORTACIÓN DE LISTAS M3U
+   PANEL DE ADMINISTRACIÓN Y GESTIÓN DE CANALES
    ========================================================================== */
 
 function renderAdminChannelList() {
@@ -595,40 +675,26 @@ function renderAdminChannelList() {
 
   const btnImport = document.getElementById('btn-import-m3u');
   if (btnImport) {
-    btnImport.onclick = handleM3UImportPrompt;
-  }
-
-  const btnExportJson = document.getElementById('btn-export-json');
-  if (btnExportJson) {
-    btnExportJson.onclick = exportChannelsJSON;
-  }
-
-  const btnUploadJson = document.getElementById('btn-upload-json');
-  const inputJsonFile = document.getElementById('input-json-file');
-  if (btnUploadJson && inputJsonFile) {
-    btnUploadJson.onclick = () => inputJsonFile.click();
-    inputJsonFile.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) {
-        importChannelsFromJSONFile(e.target.files[0]);
-      }
-    };
+    btnImport.textContent = "📡 Sincronizar M3U en Vivo";
+    btnImport.onclick = () => syncM3UChannels(true);
   }
 
   const btnReset = document.getElementById('btn-reset-default');
   if (btnReset) {
     btnReset.onclick = () => {
-      if (confirm('¿Restablecer canales a la lista inicial predeterminada?')) {
+      if (confirm('¿Restablecer y volver a cargar los canales de la lista M3U por defecto?')) {
+        currentM3uUrl = DEFAULT_M3U_URL;
+        localStorage.setItem(M3U_URL_KEY, DEFAULT_M3U_URL);
         channelsList = [...DEFAULT_CHANNELS];
         saveChannels();
+        syncM3UChannels(true);
         renderAdminChannelList();
-        renderCategories();
-        renderChannels();
       }
     };
   }
 }
 
-// Reordenamiento Manual: Mover Arriba / Mover Abajo
+// Reordenamiento Manual
 window.moveChannelUp = function(index) {
   if (index <= 0) return;
   const temp = channelsList[index];
@@ -669,7 +735,7 @@ function openChannelModal(channelToEdit = null) {
   } else {
     modalTitle.textContent = "Agregar Nuevo Canal IPTV / Stream";
     nameInput.value = '';
-    catInput.value = 'Locales';
+    catInput.value = 'LOCALES';
     urlInput.value = '';
     logoInput.value = '';
     editIdInput.value = '';
@@ -716,72 +782,13 @@ window.editChannel = function(id) {
 
 window.deleteChannel = function(id) {
   if (confirm('¿Seguro que deseas eliminar este canal?')) {
-    const isPlaying = activeChannel && activeChannel.id === id;
     channelsList = channelsList.filter(c => c.id !== id);
     saveChannels();
     renderAdminChannelList();
     renderCategories();
     renderChannels();
-
-    if (isPlaying) {
-      if (channelsList.length > 0) {
-        playChannel(channelsList[0]);
-      } else {
-        if (playerTitle) playerTitle.textContent = "Sin canales";
-        if (videoElement) { videoElement.pause(); videoElement.style.display = 'none'; }
-        if (iframeElement) { iframeElement.src = ''; iframeElement.style.display = 'none'; }
-      }
-    }
   }
 };
-
-function handleM3UImportPrompt() {
-  const m3uText = prompt("Pega aquí el contenido de tu lista M3U o enlace M3U8 para importar automáticamente los canales:");
-  if (m3uText) {
-    const lines = m3uText.split('\n');
-    let importedCount = 0;
-    let tempName = '';
-    let tempLogo = '';
-    let tempGroup = 'Locales';
-
-    lines.forEach(line => {
-      line = line.trim();
-      if (line.startsWith('#EXTINF:')) {
-        const logoMatch = line.match(/tvg-logo="([^"]+)"/);
-        if (logoMatch) tempLogo = logoMatch[1];
-        
-        const groupMatch = line.match(/group-title="([^"]+)"/);
-        if (groupMatch) tempGroup = groupMatch[1];
-
-        const commaParts = line.split(',');
-        tempName = commaParts[commaParts.length - 1].trim();
-      } else if (line.startsWith('http://') || line.startsWith('https://')) {
-        if (tempName) {
-          channelsList.unshift({
-            id: 'ch-m3u-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
-            name: tempName,
-            category: tempGroup || 'Locales',
-            url: line,
-            logo: tempLogo || 'logo.jpg'
-          });
-          importedCount++;
-          tempName = '';
-          tempLogo = '';
-        }
-      }
-    });
-
-    if (importedCount > 0) {
-      saveChannels();
-      renderAdminChannelList();
-      renderCategories();
-      renderChannels();
-      alert(`¡Se importaron exitosamente ${importedCount} canales IPTV!`);
-    } else {
-      alert("No se pudieron detectar enlaces de streaming válidos en el texto ingresado.");
-    }
-  }
-}
 
 /* ==========================================================================
    NAVEGACIÓN POR TECLADO / CONTROL REMOTO (ANDROID TV D-PAD)
@@ -789,21 +796,11 @@ function handleM3UImportPrompt() {
 
 function setupTVNavigation() {
   document.addEventListener('keydown', (e) => {
-    // Si hay un modal activo, atrapar navegación dentro de ese modal
-    const activeModal = document.querySelector('.modal-backdrop.active');
-    let focusables;
-
-    if (activeModal) {
-      focusables = Array.from(activeModal.querySelectorAll('.focusable, button, input, select, textarea, .btn-primary, .btn-secondary, .btn-danger, .close-modal-btn'));
-    } else {
-      focusables = Array.from(document.querySelectorAll('.focusable, .channel-card, .category-pill, .btn-icon'));
-    }
-
+    const focusables = Array.from(document.querySelectorAll('.focusable, .channel-card, .category-pill, .btn-icon'));
     if (focusables.length === 0) return;
 
     let currentFocus = document.activeElement;
     let idx = focusables.indexOf(currentFocus);
-    if (idx === -1) idx = 0;
 
     switch (e.key) {
       case 'ArrowRight':
@@ -818,24 +815,16 @@ function setupTVNavigation() {
         break;
       case 'ArrowDown':
         e.preventDefault();
-        if (activeModal) {
-          idx = (idx + 1) % focusables.length;
-        } else {
-          idx = Math.min(idx + 4, focusables.length - 1);
-        }
+        idx = Math.min(idx + 4, focusables.length - 1);
         focusables[idx].focus();
         break;
       case 'ArrowUp':
         e.preventDefault();
-        if (activeModal) {
-          idx = (idx - 1 + focusables.length) % focusables.length;
-        } else {
-          idx = Math.max(idx - 4, 0);
-        }
+        idx = Math.max(idx - 4, 0);
         focusables[idx].focus();
         break;
       case 'Enter':
-        if (!activeModal && (document.activeElement === videoElement || document.activeElement === iframeElement)) {
+        if (document.activeElement === videoElement || document.activeElement === iframeElement) {
           toggleFullscreen();
         }
         break;
@@ -851,220 +840,6 @@ function setupTVNavigation() {
   });
 }
 
-/* ==========================================================================
-   SINCRONIZACIÓN Y ARCHIVO CENTRAL channels.json
-   ========================================================================== */
-
-// Función para descargar channels.json actualizado cuando se agrega/edita/elimina un canal
-function exportChannelsJSON() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(channelsList, null, 2));
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", "channels.json");
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
-  showNotificationToast("💾 Archivo channels.json descargado correctamente.");
-}
-
-// Función para importar canales desde un archivo channels.json seleccionado
-function importChannelsFromJSONFile(file) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const parsed = JSON.parse(e.target.result);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        channelsList = parsed;
-        saveChannels();
-        renderAdminChannelList();
-        renderCategories();
-        renderChannels();
-        showNotificationToast("📂 ¡Se cargaron " + parsed.length + " canales desde el archivo channels.json!");
-      } else {
-        alert("El archivo JSON no contiene una lista de canales válida.");
-      }
-    } catch (err) {
-      alert("Error leyendo el archivo channels.json: " + err.message);
-    }
-  };
-  reader.readAsText(file);
-}
-
-// Función para cargar automáticamente la lista M3U oficial desde el enlace original de Dropbox
-async function fetchRemoteM3UPlaylist(showToast = false) {
-  try {
-    const fetchUrl = REMOTE_M3U_URL + '&t=' + Date.now();
-    const response = await fetch(fetchUrl, { cache: 'no-store' });
-    if (response.ok) {
-      const m3uText = await response.text();
-      const parsedChannels = parseM3UText(m3uText);
-
-      if (parsedChannels.length > 0) {
-        const savedLocal = getSavedUserChannels() || [];
-        const map = new Map();
-
-        // 1. Insertar canales guardados locales
-        savedLocal.forEach(ch => map.set(ch.id, ch));
-
-        // 2. Sobrescribir con los canales FRESCOS recién jalados del enlace M3U de Dropbox (PANDO M3U)
-        parsedChannels.forEach(ch => map.set(ch.id, ch));
-
-        channelsList = Array.from(map.values());
-        saveChannels();
-        renderCategories();
-        renderChannels();
-
-        if (showToast) {
-          showNotificationToast("✅ ¡Se sincronizaron " + parsedChannels.length + " canales en vivo desde el enlace original PANDO M3U de Dropbox!");
-        }
-        return true;
-      }
-    }
-  } catch (e) {
-    console.warn("No se pudo jalar la lista M3U de Dropbox (modo offline):", e);
-  }
-  return false;
-}
-
-function parseM3UText(m3uText) {
-  if (!m3uText) return [];
-  const lines = m3uText.split(/\r?\n/);
-  const result = [];
-  let tempName = '';
-  let tempLogo = '';
-  let tempGroup = 'Locales';
-
-  lines.forEach((line) => {
-    line = line.trim();
-    if (line.startsWith('#EXTINF:')) {
-      const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
-      tempLogo = logoMatch ? logoMatch[1] : '';
-
-      const groupMatch = line.match(/group-title="([^"]+)"/i);
-      if (groupMatch) {
-        let group = groupMatch[1].toUpperCase();
-        if (group.includes('LOCAL')) tempGroup = 'Locales';
-        else if (group.includes('MUSIC') || group.includes('MÚSICA')) tempGroup = 'Música';
-        else if (group.includes('NOTICIA') || group.includes('NEWS')) tempGroup = 'Noticias';
-        else if (group.includes('DEPORTE') || group.includes('SPORT')) tempGroup = 'Deportes';
-        else tempGroup = groupMatch[1];
-      } else {
-        tempGroup = 'Locales';
-      }
-
-      const commaIndex = line.lastIndexOf(',');
-      if (commaIndex !== -1) {
-        tempName = line.substring(commaIndex + 1).trim();
-      }
-    } else if (line.startsWith('http://') || line.startsWith('https://')) {
-      if (tempName) {
-        const safeId = 'ch-m3u-' + tempName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        result.push({
-          id: safeId,
-          name: tempName,
-          category: tempGroup || 'Locales',
-          url: line,
-          logo: tempLogo || 'logo.jpg'
-        });
-        tempName = '';
-        tempLogo = '';
-      }
-    }
-  });
-
-  return result;
-}
-
-// Función que busca automáticamente el archivo channels.json en el hosting o servidor
-async function autoFetchHostingChannelsJSON(showToast = false) {
-  try {
-    const response = await fetch('./channels.json?t=' + Date.now(), { cache: 'no-store' });
-    if (response.ok) {
-      const hostingChannels = await response.json();
-      if (Array.isArray(hostingChannels) && hostingChannels.length > 0) {
-        const savedLocal = getSavedUserChannels() || [];
-        const map = new Map();
-
-        hostingChannels.forEach(ch => map.set(ch.id, ch));
-        savedLocal.forEach(ch => map.set(ch.id, ch));
-
-        channelsList = Array.from(map.values());
-        saveChannels();
-        renderCategories();
-        renderChannels();
-
-        if (showToast) {
-          showNotificationToast('✅ ¡Canales buscados y actualizados automáticamente desde el hosting (channels.json)!');
-        }
-        return true;
-      }
-    }
-  } catch (e) {
-    console.log('No se pudo jalar channels.json desde hosting (modo offline/local):', e);
-  }
-  return false;
-}
-
-// Función principal de Actualización: Jala de la lista M3U oficial de Dropbox y del hosting
-async function syncAndCacheChannels() {
-  const syncBtn = document.getElementById('btn-sync-app');
-  if (syncBtn) {
-    syncBtn.classList.add('spinning');
-    syncBtn.disabled = true;
-  }
-
-  try {
-    // 1. Jalar automáticamente la lista M3U oficial de Dropbox
-    const fetchedM3U = await fetchRemoteM3UPlaylist(false);
-    // 2. Buscar archivo channels.json local/hosting
-    const fetchedHosting = await autoFetchHostingChannelsJSON(false);
-
-    // 3. Notificar al Service Worker para actualizar el caché PWA
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ action: 'SKIP_WAITING_AND_UPDATE' });
-    }
-
-    // 4. Forzar actualización del cache storage
-    if ('caches' in window) {
-      try {
-        const cache = await caches.open('tv-digital-libre-v3');
-        await cache.addAll([
-          './index.html',
-          './styles.css',
-          './app.js',
-          './channels.js',
-          './channels.json',
-          './manifest.json',
-          './logo.jpg'
-        ]);
-      } catch (cErr) {
-        console.log('Caché actualizado');
-      }
-    }
-
-    // 5. Re-renderizar categorías y grilla de canales al instante
-    renderCategories();
-    renderChannels();
-
-    if (fetchedM3U || fetchedHosting) {
-      showNotificationToast('✅ ¡Lista de canales PANDO M3U y servidor jalados y actualizados correctamente!');
-    } else {
-      showNotificationToast('✅ ¡Todos tus canales guardados y agregados han sido jalados y actualizados!');
-    }
-
-  } catch (err) {
-    console.error('Error sincronizando canales:', err);
-    renderCategories();
-    renderChannels();
-    showNotificationToast('✅ ¡Lista de canales actualizada con éxito!');
-  } finally {
-    if (syncBtn) {
-      syncBtn.classList.remove('spinning');
-      syncBtn.disabled = false;
-    }
-  }
-}
-
 function showNotificationToast(message) {
   const toast = document.getElementById('toast-notification');
   if (!toast) return;
@@ -1076,4 +851,3 @@ function showNotificationToast(message) {
     toast.classList.remove('show');
   }, 4000);
 }
-
