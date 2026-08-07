@@ -1,17 +1,18 @@
 /* ==========================================================================
-   TV DIGITAL LIBRE - App Engine (Proari Systems)
-   Reproductor IPTV, Hls.js, YouTube/DailyMotion/Embeds, Reconexión,
-   Sincronización M3U Automática en Tiempo Real (Dropbox Pando), PWA
+   TV DIGITAL LIBRE - App Engine (GoldenPlay Style IPTV)
+   Reproductor IPTV, Sincronización M3U Automática en Tiempo Real, PWA,
+   Layout 2 Columnas Estilo IPTV Referencia (Modo Horizontal)
    ========================================================================== */
 
 // Configuración Global y Estado
 const ADMIN_PASSWORD = "4206371Luis*";
-const STORAGE_KEY = "tv_digital_libre_channels_v3";
-const M3U_URL_KEY = "tv_digital_libre_m3u_url_v3";
+const STORAGE_KEY = "tv_digital_libre_channels_v4";
+const M3U_URL_KEY = "tv_digital_libre_m3u_url_v4";
 
 let channelsList = [];
 let activeChannel = null;
-let currentCategory = "Todos";
+let currentCategory = "LOCALES";
+let availableCategories = ["LOCALES"];
 let hlsPlayer = null;
 
 let currentM3uUrl = localStorage.getItem(M3U_URL_KEY) || DEFAULT_M3U_URL;
@@ -27,36 +28,70 @@ let isReconnecting = false;
 let deferredPrompt = null;
 
 // DOM Elements
-let videoElement, iframeElement, playerTitle, playerCategory, playerLogo, liveBadge, reconnectOverlay, reconnectCountText;
-let channelsGrid, categoryContainer, searchInput;
+let videoElement, iframeElement, reconnectOverlay, reconnectCountText;
+let channelsGrid, catTitleElement, searchInput, sideChannelTitle, epgDescElement;
 let authModal, adminModal, channelModal, passwordInput, authErrorMsg;
 
 document.addEventListener('DOMContentLoaded', () => {
   initDOMReferences();
   initPWA();
+  initClock();
+  initOrientation();
   loadChannels();
   setupEventListeners();
   setupTVNavigation();
 });
 
 /* ==========================================================================
-   INICIALIZACIÓN DE REFERENCIAS DOM Y PWA
+   INICIALIZACIÓN DE RELOJ EN TIEMPO REAL Y ORIENTACIÓN HORIZONTAL
+   ========================================================================== */
+
+function initClock() {
+  const clockEl = document.getElementById('header-clock');
+  
+  function updateClock() {
+    if (!clockEl) return;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    
+    // Meses en español corto
+    const months = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    const monthName = months[now.getMonth()];
+    const day = String(now.getDate()).padStart(2, '0');
+    const year = now.getFullYear();
+
+    clockEl.textContent = `${timeStr}  ${monthName} ${day},${year}`;
+  }
+
+  updateClock();
+  setInterval(updateClock, 1000);
+}
+
+function initOrientation() {
+  // Intentar bloquear en modo horizontal en dispositivos móviles
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(() => {
+      // Ignorar si el navegador bloquea la orientación sin gesto de usuario
+    });
+  }
+}
+
+/* ==========================================================================
+   REFERENCIAS DOM Y PWA
    ========================================================================== */
 
 function initDOMReferences() {
   videoElement = document.getElementById('video-player');
   iframeElement = document.getElementById('iframe-player');
 
-  playerTitle = document.getElementById('player-channel-title');
-  playerCategory = document.getElementById('player-channel-category');
-  playerLogo = document.getElementById('player-channel-logo');
-  liveBadge = document.getElementById('live-badge');
   reconnectOverlay = document.getElementById('reconnect-overlay');
   reconnectCountText = document.getElementById('reconnect-count-text');
 
   channelsGrid = document.getElementById('channels-grid');
-  categoryContainer = document.getElementById('categories-container');
+  catTitleElement = document.getElementById('cat-current-title');
   searchInput = document.getElementById('search-input');
+  sideChannelTitle = document.getElementById('side-channel-title');
+  epgDescElement = document.getElementById('player-epg-desc');
 
   authModal = document.getElementById('auth-modal');
   adminModal = document.getElementById('admin-modal');
@@ -68,28 +103,9 @@ function initDOMReferences() {
 function initPWA() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('[PWA] Service Worker registrado exitosamente:', reg.scope))
-      .catch(err => console.warn('[PWA] Error registrando Service Worker:', err));
+      .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
+      .catch(err => console.warn('[PWA] Error Service Worker:', err));
   }
-
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    const installBtn = document.getElementById('btn-pwa-install');
-    if (installBtn) {
-      installBtn.style.display = 'flex';
-      installBtn.addEventListener('click', () => {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
-          if (choiceResult.outcome === 'accepted') {
-            console.log('[PWA] El usuario instaló la aplicación');
-          }
-          deferredPrompt = null;
-          installBtn.style.display = 'none';
-        });
-      });
-    }
-  });
 }
 
 /* ==========================================================================
@@ -110,7 +126,7 @@ function loadChannels() {
     saveChannels();
   }
   
-  renderCategories();
+  updateCategoryState();
   renderChannels();
 
   // Seleccionar primer canal automáticamente
@@ -121,10 +137,10 @@ function loadChannels() {
   // Sincronización automática de canales al iniciar
   syncM3UChannels(false);
 
-  // Iniciar temporizador de sincronización en tiempo real (cada 60 segundos)
+  // Temporizador de sincronización en tiempo real (cada 60s)
   if (autoSyncTimer) clearInterval(autoSyncTimer);
   autoSyncTimer = setInterval(() => {
-    console.log('[Auto-Sync] Actualizando lista M3U en tiempo real...');
+    console.log('[Auto-Sync] Comprobando lista M3U en tiempo real...');
     syncM3UChannels(false);
   }, 60000);
 }
@@ -150,9 +166,7 @@ async function fetchM3UData(url) {
     const res = await fetch(targetUrl, { cache: 'no-cache' });
     if (res.ok) {
       const text = await res.text();
-      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
-        return text;
-      }
+      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) return text;
     }
   } catch (e) {
     console.warn('[M3U Sync] Direct fetch failed, trying proxy...', e);
@@ -164,9 +178,7 @@ async function fetchM3UData(url) {
     const res = await fetch(proxyUrl, { cache: 'no-cache' });
     if (res.ok) {
       const text = await res.text();
-      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
-        return text;
-      }
+      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) return text;
     }
   } catch (e) {
     console.warn('[M3U Sync] AllOrigins proxy failed, trying CorsProxy...', e);
@@ -178,9 +190,7 @@ async function fetchM3UData(url) {
     const res = await fetch(proxyUrl2, { cache: 'no-cache' });
     if (res.ok) {
       const text = await res.text();
-      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
-        return text;
-      }
+      if (text.includes('#EXTINF') || text.includes('#EXTM3U')) return text;
     }
   } catch (e) {
     console.error('[M3U Sync] Fallaron todos los intentos de descarga M3U:', e);
@@ -203,20 +213,16 @@ async function syncM3UChannels(showToast = false) {
       if (parsed && parsed.length > 0) {
         channelsList = parsed;
         saveChannels();
-        renderCategories();
+        updateCategoryState();
         renderChannels();
 
-        // Si no hay canal activo o el canal activo ya no está, reproducir el primero
         if (!activeChannel || !channelsList.some(c => c.id === activeChannel.id)) {
-          if (channelsList.length > 0) {
-            playChannel(channelsList[0]);
-          }
+          if (channelsList.length > 0) playChannel(channelsList[0]);
         }
 
         if (showToast) {
           showNotificationToast(`✅ Sincronizados ${parsed.length} canales en tiempo real desde M3U`);
         }
-        console.log(`[M3U Sync] Éxito: ${parsed.length} canales actualizados.`);
         return true;
       }
     }
@@ -239,67 +245,87 @@ async function syncM3UChannels(showToast = false) {
 }
 
 /* ==========================================================================
-   RENDERIZADO DE CATEGORÍAS Y CANALES
+   NAVEGACIÓN POR CATEGORÍAS (< CATEGORÍA >)
    ========================================================================== */
 
-function renderCategories() {
-  const categoriesSet = new Set(["Todos"]);
+function updateCategoryState() {
+  const categoriesSet = new Set();
   channelsList.forEach(ch => {
     if (ch.category && ch.category.trim()) {
-      categoriesSet.add(ch.category.trim());
+      categoriesSet.add(ch.category.trim().toUpperCase());
     }
   });
 
-  const categories = Array.from(categoriesSet);
+  if (categoriesSet.size === 0) categoriesSet.add("LOCALES");
 
-  if (!categories.includes(currentCategory)) {
-    currentCategory = "Todos";
+  availableCategories = Array.from(categoriesSet);
+  
+  if (!availableCategories.includes(currentCategory)) {
+    currentCategory = availableCategories[0];
   }
 
-  categoryContainer.innerHTML = categories.map(cat => `
-    <button class="category-pill focusable ${cat === currentCategory ? 'active' : ''}" data-category="${cat}">
-      ${cat}
-    </button>
-  `).join('');
-
-  categoryContainer.querySelectorAll('.category-pill').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      currentCategory = e.target.dataset.category;
-      document.querySelectorAll('.category-pill').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      renderChannels(searchInput ? searchInput.value : '');
-    });
-  });
+  if (catTitleElement) {
+    catTitleElement.textContent = currentCategory;
+  }
 }
+
+function prevCategory() {
+  if (availableCategories.length === 0) return;
+  const idx = availableCategories.indexOf(currentCategory);
+  const prevIdx = (idx - 1 + availableCategories.length) % availableCategories.length;
+  currentCategory = availableCategories[prevIdx];
+  if (catTitleElement) catTitleElement.textContent = currentCategory;
+  renderChannels(searchInput ? searchInput.value : '');
+}
+
+function nextCategory() {
+  if (availableCategories.length === 0) return;
+  const idx = availableCategories.indexOf(currentCategory);
+  const nextIdx = (idx + 1) % availableCategories.length;
+  currentCategory = availableCategories[nextIdx];
+  if (catTitleElement) catTitleElement.textContent = currentCategory;
+  renderChannels(searchInput ? searchInput.value : '');
+}
+
+/* ==========================================================================
+   RENDERIZADO DE CANALES ESTILO GOLDENPLAY (REFERENCIA)
+   ========================================================================== */
 
 function renderChannels(filterText = '') {
   const filtered = channelsList.filter(ch => {
-    const matchesCat = (currentCategory === "Todos") || (ch.category.toLowerCase() === currentCategory.toLowerCase());
+    const matchesCat = ch.category.toUpperCase() === currentCategory.toUpperCase();
     const matchesSearch = filterText === '' || ch.name.toLowerCase().includes(filterText.toLowerCase());
     return matchesCat && matchesSearch;
   });
 
   if (filtered.length === 0) {
     channelsGrid.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted);">
-        <p style="font-size: 1.2rem; font-weight: 600;">No se encontraron canales</p>
-        <p style="font-size: 0.9rem;">Prueba con otra categoría o presiona "Actualizar" para refrescar la lista M3U.</p>
+      <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+        <p style="font-size: 0.95rem; font-weight: 700;">No hay canales en "${currentCategory}"</p>
+        <p style="font-size: 0.8rem; margin-top: 4px;">Usa las flechas &lt; &gt; para cambiar de categoría.</p>
       </div>
     `;
     return;
   }
 
-  channelsGrid.innerHTML = filtered.map(ch => `
-    <div class="channel-card focusable ${activeChannel && activeChannel.id === ch.id ? 'active' : ''}" data-id="${ch.id}">
-      <div class="channel-logo-wrapper">
-        <img class="channel-logo-img" src="${ch.logo}" alt="${ch.name}" onerror="this.src='logo.jpg'">
+  // Generar número de índice tipo IPTV (725, 726... o 1, 2, 3...)
+  channelsGrid.innerHTML = filtered.map((ch, index) => {
+    const channelNum = index + 1;
+    const isActive = activeChannel && activeChannel.id === ch.id;
+
+    return `
+      <div class="channel-card focusable ${isActive ? 'active' : ''}" data-id="${ch.id}">
+        <span class="channel-num">${channelNum}</span>
+        <div class="channel-logo-wrapper">
+          <img class="channel-logo-img" src="${ch.logo}" alt="${ch.name}" onerror="this.src='logo.jpg'">
+        </div>
+        <div class="channel-info-wrapper">
+          <div class="channel-name">${ch.name}</div>
+          <div class="channel-epg-text">Señal en vivo • ${ch.category || 'LOCALES'}</div>
+        </div>
       </div>
-      <div class="channel-info-wrapper">
-        <div class="channel-name">${ch.name}</div>
-        <div class="channel-category-tag">${ch.category}</div>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   channelsGrid.querySelectorAll('.channel-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -314,14 +340,13 @@ function renderChannels(filterText = '') {
 }
 
 /* ==========================================================================
-   PARSER DE EMBEDS (YOUTUBE, DAILYMOTION, IFRAME CODES, DIRECT STREAMS)
+   PARSER DE EMBEDS Y REPRODUCTOR
    ========================================================================== */
 
 function parseEmbedOrStreamUrl(input) {
   if (!input) return { type: 'video', url: '' };
   input = input.trim();
 
-  // 1. Código embed completo: <iframe ... src="..." ...></iframe>
   const iframeSrcMatch = input.match(/src=["']([^"']+)["']/i);
   if (iframeSrcMatch) {
     let srcUrl = iframeSrcMatch[1];
@@ -331,56 +356,36 @@ function parseEmbedOrStreamUrl(input) {
     return { type: 'embed', url: srcUrl };
   }
 
-  // 2. YouTube Links
   const ytMatch = input.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
   if (ytMatch) {
-    const videoId = ytMatch[1];
     return {
       type: 'embed',
-      url: `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&rel=0&enablejsapi=1`
+      url: `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=0&rel=0&enablejsapi=1`
     };
   }
 
-  // 3. DailyMotion Links
   const dmMatch = input.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/i);
   if (dmMatch) {
-    const videoId = dmMatch[1];
     return {
       type: 'embed',
-      url: `https://www.dailymotion.com/embed/video/${videoId}?autoplay=1`
+      url: `https://www.dailymotion.com/embed/video/${dmMatch[1]}?autoplay=1`
     };
   }
 
-  // 4. Vimeo Links
-  const vimeoMatch = input.match(/vimeo\.com\/(?:video\/)?([0-9]+)/i);
-  if (vimeoMatch) {
-    return {
-      type: 'embed',
-      url: `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`
-    };
-  }
-
-  // 5. Embed direct iframe URLs
   if (input.includes('/embed/') || input.includes('player.')) {
     return { type: 'embed', url: input };
   }
 
-  // 6. Transmisión directa por video HTML5 / Hls.js (.m3u8, .mp4, .ts, etc.)
   return { type: 'video', url: input };
 }
-
-/* ==========================================================================
-   REPRODUCTOR DE VIDEO Y RECONEXIÓN AUTOMÁTICA
-   ========================================================================== */
 
 function playChannel(channel) {
   activeChannel = channel;
   reconnectAttempts = 0;
   hideReconnectOverlay();
 
-  if (playerTitle) playerTitle.textContent = channel.name;
-  if (playerCategory) playerCategory.textContent = channel.category;
-  if (playerLogo) playerLogo.src = channel.logo;
+  if (sideChannelTitle) sideChannelTitle.textContent = channel.name;
+  if (epgDescElement) epgDescElement.textContent = `Transmisión en vivo en alta definición de ${channel.name} • Proari Systems`;
 
   const rawUrl = channel.url;
   const parsed = parseEmbedOrStreamUrl(rawUrl);
@@ -424,22 +429,19 @@ function playChannel(channel) {
       hlsPlayer.attachMedia(videoElement);
 
       hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
-        videoElement.play().catch(err => console.log('Autoplay bloqueado por el navegador:', err));
+        videoElement.play().catch(err => console.log('Autoplay bloqueado:', err));
       });
 
       hlsPlayer.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.warn('Error de red HLS. Iniciando reconexión automática...');
               triggerAutoReconnect();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.warn('Error de medio HLS. Recuperando buffer...');
               hlsPlayer.recoverMediaError();
               break;
             default:
-              console.error('Error fatal no recuperable en HLS. Reintentando señal...');
               triggerAutoReconnect();
               break;
           }
@@ -457,30 +459,11 @@ function playChannel(channel) {
 
 function setupVideoEvents() {
   if (videoElement) {
-    videoElement.addEventListener('error', () => {
-      console.warn('Error nativo en reproductor de video. Activando reconexión...');
-      triggerAutoReconnect();
-    });
-
+    videoElement.addEventListener('error', () => triggerAutoReconnect());
     videoElement.addEventListener('stalled', () => {
-      console.warn('Transmisión congelada (stalled). Verificando señal...');
-      if (!isReconnecting) {
-        triggerAutoReconnect();
-      }
+      if (!isReconnecting) triggerAutoReconnect();
     });
-
     videoElement.addEventListener('dblclick', toggleFullscreen);
-
-    let lastTap = 0;
-    videoElement.addEventListener('touchend', (e) => {
-      const currentTime = new Date().getTime();
-      const tapLength = currentTime - lastTap;
-      if (tapLength < 300 && tapLength > 0) {
-        toggleFullscreen();
-        e.preventDefault();
-      }
-      lastTap = currentTime;
-    });
   }
 
   const playerCard = document.getElementById('player-container');
@@ -488,19 +471,23 @@ function setupVideoEvents() {
     playerCard.addEventListener('dblclick', toggleFullscreen);
   }
 
-  const handleFullscreenState = () => {
-    const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const handleFullscreenChange = () => {
+    const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
     if (playerCard) {
       if (isFS) {
         playerCard.classList.add('is-fullscreen');
+        document.body.classList.add('is-fullscreen');
       } else {
         playerCard.classList.remove('is-fullscreen');
+        document.body.classList.remove('is-fullscreen');
       }
     }
   };
 
-  document.addEventListener('fullscreenchange', handleFullscreenState);
-  document.addEventListener('webkitfullscreenchange', handleFullscreenState);
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+  document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+  document.addEventListener('MSFullscreenChange', handleFullscreenChange);
 }
 
 function triggerAutoReconnect() {
@@ -515,22 +502,16 @@ function triggerAutoReconnect() {
 
   if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
     const delay = Math.min(1000 * reconnectAttempts, 4000);
-    console.log(`[Reconexión] Reintentando conectar a ${activeChannel?.name} en ${delay / 1000}s...`);
-
     clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => {
       isReconnecting = false;
-      if (activeChannel) {
-        playChannel(activeChannel);
-      }
+      if (activeChannel) playChannel(activeChannel);
     }, delay);
   } else {
     if (reconnectCountText) {
-      reconnectCountText.textContent = `No se pudo conectar con la señal. Intenta de nuevo o cambia de canal.`;
+      reconnectCountText.textContent = `No se pudo conectar. Intenta de nuevo más tarde.`;
     }
-    setTimeout(() => {
-      isReconnecting = false;
-    }, 5000);
+    setTimeout(() => { isReconnecting = false; }, 5000);
   }
 }
 
@@ -560,18 +541,42 @@ function toggleFullscreen() {
 }
 
 /* ==========================================================================
-   AUTENTICACIÓN Y ADMINISTRACIÓN CON CONTRASEÑA (4206371Luis*)
+   LISTENERS Y EVENTOS DE INTERFAZ
    ========================================================================== */
 
 function setupEventListeners() {
   setupVideoEvents();
+
+  // Botón Volver (Header)
+  const btnBack = document.getElementById('btn-back');
+  if (btnBack) {
+    btnBack.addEventListener('click', toggleFullscreen);
+  }
+
+  // Navegación con Flechas de Categoría (< CATEGORIA >)
+  const catPrevBtn = document.getElementById('cat-prev-btn');
+  const catNextBtn = document.getElementById('cat-next-btn');
+
+  if (catPrevBtn) catPrevBtn.addEventListener('click', prevCategory);
+  if (catNextBtn) catNextBtn.addEventListener('click', nextCategory);
+
+  // Toggle Buscador
+  const btnSearchToggle = document.getElementById('btn-search-toggle');
+  const searchContainer = document.getElementById('search-box-container');
+  if (btnSearchToggle && searchContainer) {
+    btnSearchToggle.addEventListener('click', () => {
+      searchContainer.classList.toggle('hidden');
+      if (!searchContainer.classList.contains('hidden') && searchInput) {
+        searchInput.focus();
+      }
+    });
+  }
 
   const btnConfig = document.getElementById('btn-config');
   if (btnConfig) {
     btnConfig.addEventListener('click', openAuthModal);
   }
 
-  // Botón Sincronizar M3U en tiempo real desde Header
   const btnSync = document.getElementById('btn-sync-app');
   if (btnSync) {
     btnSync.addEventListener('click', () => syncM3UChannels(true));
@@ -654,37 +659,32 @@ function renderAdminChannelList() {
   listContainer.innerHTML = channelsList.map((ch, index) => `
     <div class="admin-channel-item">
       <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 0.8rem; font-weight: 800; color: var(--accent); min-width: 28px;">#${index + 1}</span>
+        <span style="font-size: 0.8rem; font-weight: 800; color: var(--red-bright); min-width: 28px;">#${index + 1}</span>
         <img src="${ch.logo}" style="width: 32px; height: 32px; object-fit: contain;" onerror="this.src='logo.jpg'">
         <div>
           <div style="font-weight: 700;">${ch.name}</div>
-          <div style="font-size: 0.75rem; color: var(--accent);">${ch.category}</div>
+          <div style="font-size: 0.75rem; color: var(--red-bright);">${ch.category}</div>
         </div>
       </div>
       <div class="admin-item-actions">
-        <button class="btn-secondary" onclick="moveChannelUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3;"' : ''} title="Subir Posición">▲ Subir</button>
-        <button class="btn-secondary" onclick="moveChannelDown(${index})" ${index === channelsList.length - 1 ? 'disabled style="opacity:0.3;"' : ''} title="Bajar Posición">▼ Bajar</button>
-        <button class="btn-secondary" onclick="editChannel('${ch.id}')">✏️ Editar</button>
-        <button class="btn-danger" onclick="deleteChannel('${ch.id}')">🗑️ Eliminar</button>
+        <button class="btn-secondary" onclick="moveChannelUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3;"' : ''}>▲</button>
+        <button class="btn-secondary" onclick="moveChannelDown(${index})" ${index === channelsList.length - 1 ? 'disabled style="opacity:0.3;"' : ''}>▼</button>
+        <button class="btn-secondary" onclick="editChannel('${ch.id}')">✏️</button>
+        <button class="btn-danger" onclick="deleteChannel('${ch.id}')">🗑️</button>
       </div>
     </div>
   `).join('');
 
   const btnAdd = document.getElementById('btn-add-channel');
-  if (btnAdd) {
-    btnAdd.onclick = () => openChannelModal();
-  }
+  if (btnAdd) btnAdd.onclick = () => openChannelModal();
 
   const btnImport = document.getElementById('btn-import-m3u');
-  if (btnImport) {
-    btnImport.textContent = "📡 Sincronizar M3U en Vivo";
-    btnImport.onclick = () => syncM3UChannels(true);
-  }
+  if (btnImport) btnImport.onclick = () => syncM3UChannels(true);
 
   const btnReset = document.getElementById('btn-reset-default');
   if (btnReset) {
     btnReset.onclick = () => {
-      if (confirm('¿Restablecer y volver a cargar los canales de la lista M3U por defecto?')) {
+      if (confirm('¿Restablecer canales a la lista M3U por defecto?')) {
         currentM3uUrl = DEFAULT_M3U_URL;
         localStorage.setItem(M3U_URL_KEY, DEFAULT_M3U_URL);
         channelsList = [...DEFAULT_CHANNELS];
@@ -696,7 +696,6 @@ function renderAdminChannelList() {
   }
 }
 
-// Reordenamiento Manual
 window.moveChannelUp = function(index) {
   if (index <= 0) return;
   const temp = channelsList[index];
@@ -704,7 +703,7 @@ window.moveChannelUp = function(index) {
   channelsList[index - 1] = temp;
   saveChannels();
   renderAdminChannelList();
-  renderCategories();
+  updateCategoryState();
   renderChannels();
 };
 
@@ -715,7 +714,7 @@ window.moveChannelDown = function(index) {
   channelsList[index + 1] = temp;
   saveChannels();
   renderAdminChannelList();
-  renderCategories();
+  updateCategoryState();
   renderChannels();
 };
 
@@ -728,14 +727,14 @@ function openChannelModal(channelToEdit = null) {
   const editIdInput = document.getElementById('ch-edit-id');
 
   if (channelToEdit) {
-    modalTitle.textContent = "Modificar Canal IPTV / Stream";
+    modalTitle.textContent = "Modificar Canal IPTV";
     nameInput.value = channelToEdit.name;
     catInput.value = channelToEdit.category;
     urlInput.value = channelToEdit.url;
     logoInput.value = channelToEdit.logo;
     editIdInput.value = channelToEdit.id;
   } else {
-    modalTitle.textContent = "Agregar Nuevo Canal IPTV / Stream";
+    modalTitle.textContent = "Agregar Nuevo Canal IPTV";
     nameInput.value = '';
     catInput.value = 'LOCALES';
     urlInput.value = '';
@@ -749,7 +748,7 @@ function openChannelModal(channelToEdit = null) {
     e.preventDefault();
     const id = editIdInput.value;
     const name = nameInput.value.trim();
-    const category = catInput.value.trim();
+    const category = catInput.value.trim().toUpperCase();
     const url = urlInput.value.trim();
     const logo = logoInput.value.trim() || 'logo.jpg';
 
@@ -772,7 +771,7 @@ function openChannelModal(channelToEdit = null) {
     saveChannels();
     channelModal.classList.remove('active');
     renderAdminChannelList();
-    renderCategories();
+    updateCategoryState();
     renderChannels();
   };
 }
@@ -787,7 +786,7 @@ window.deleteChannel = function(id) {
     channelsList = channelsList.filter(c => c.id !== id);
     saveChannels();
     renderAdminChannelList();
-    renderCategories();
+    updateCategoryState();
     renderChannels();
   }
 };
@@ -798,7 +797,7 @@ window.deleteChannel = function(id) {
 
 function setupTVNavigation() {
   document.addEventListener('keydown', (e) => {
-    const focusables = Array.from(document.querySelectorAll('.focusable, .channel-card, .category-pill, .btn-icon'));
+    const focusables = Array.from(document.querySelectorAll('.focusable, .channel-card, .icon-btn, .cat-arrow-btn'));
     if (focusables.length === 0) return;
 
     let currentFocus = document.activeElement;
@@ -817,12 +816,12 @@ function setupTVNavigation() {
         break;
       case 'ArrowDown':
         e.preventDefault();
-        idx = Math.min(idx + 4, focusables.length - 1);
+        idx = Math.min(idx + 1, focusables.length - 1);
         focusables[idx].focus();
         break;
       case 'ArrowUp':
         e.preventDefault();
-        idx = Math.max(idx - 4, 0);
+        idx = Math.max(idx - 1, 0);
         focusables[idx].focus();
         break;
       case 'Enter':
