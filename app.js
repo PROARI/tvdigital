@@ -106,6 +106,78 @@ function initPWA() {
       .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
       .catch(err => console.warn('[PWA] Error Service Worker:', err));
   }
+
+  const pwaModal = document.getElementById('pwa-install-modal');
+  const btnInstallModal = document.getElementById('btn-pwa-install-modal');
+  const btnDismissModal = document.getElementById('btn-pwa-dismiss');
+  const iosInstructions = document.getElementById('pwa-ios-instructions');
+
+  // Si la app ya está instalada y corriendo en modo Standalone, no mostrar el modal
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (isStandalone) {
+    console.log('[PWA] La aplicación ya está instalada y ejecutándose en modo standalone.');
+    return;
+  }
+
+  // Comprobar si el usuario ya descartó el aviso en esta sesión
+  const isDismissed = sessionStorage.getItem('pwa_prompt_dismissed') === 'true';
+
+  // 1. Evento antes de instalar (Android Chrome, Edge, Brave, Desktop Chrome)
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+
+    if (!isDismissed && pwaModal) {
+      setTimeout(() => {
+        pwaModal.classList.add('active');
+      }, 600);
+    }
+  });
+
+  // 2. Dispositivos iOS Safari (Mostrar instrucciones personalizadas)
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS && !isStandalone && !isDismissed && pwaModal) {
+    if (iosInstructions) iosInstructions.classList.remove('hidden');
+    if (btnInstallModal) btnInstallModal.style.display = 'none';
+    setTimeout(() => {
+      pwaModal.classList.add('active');
+    }, 600);
+  }
+
+  // 3. Fallback: Mostrar modal al ingresar si no está instalada aún y no fue descartada
+  if (!isStandalone && !isDismissed && pwaModal) {
+    setTimeout(() => {
+      if (!pwaModal.classList.contains('active') && !sessionStorage.getItem('pwa_prompt_dismissed')) {
+        pwaModal.classList.add('active');
+      }
+    }, 1000);
+  }
+
+  // Acciones de Botones del Modal
+  if (btnInstallModal) {
+    btnInstallModal.addEventListener('click', () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('[PWA] El usuario instaló la aplicación');
+          }
+          deferredPrompt = null;
+          if (pwaModal) pwaModal.classList.remove('active');
+        });
+      } else {
+        showNotificationToast('📲 Selecciona "Añadir a pantalla de inicio" en las opciones de tu navegador.');
+        if (pwaModal) pwaModal.classList.remove('active');
+      }
+    });
+  }
+
+  if (btnDismissModal) {
+    btnDismissModal.addEventListener('click', () => {
+      sessionStorage.setItem('pwa_prompt_dismissed', 'true');
+      if (pwaModal) pwaModal.classList.remove('active');
+    });
+  }
 }
 
 /* ==========================================================================
