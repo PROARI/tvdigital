@@ -335,34 +335,19 @@ body {
 }
 
 /* ==========================================================================
-   COLUMNA DERECHA: REPRODUCTOR + INFO CANAL
+   COLUMNA DERECHA: REPRODUCTOR MAXIMIZADO + CONTROLES COMPACTOS PEQUEÑOS
    ========================================================================== */
 
 .player-column {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.35rem;
   height: 100%;
   overflow: hidden;
-}
-
-.player-top-wrapper {
-  display: grid;
-  grid-template-columns: 1fr 200px;
-  gap: 1rem;
   flex: 1;
-  min-height: 0;
 }
 
-@media (max-width: 850px) {
-  .player-top-wrapper {
-    grid-template-columns: 1fr;
-  }
-  .player-side-panel {
-    display: none;
-  }
-}
-
+/* Contenedor del Reproductor - Ocupa la mayor parte de la pantalla */
 .player-card {
   position: relative;
   background: #000000;
@@ -370,7 +355,9 @@ body {
   overflow: hidden;
   border: 1px solid var(--glass-border);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-  height: 100%;
+  flex: 1; /* Maximiza el alto y ancho del reproductor */
+  width: 100%;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -417,67 +404,90 @@ body.is-fullscreen .fullscreen-hint {
   visibility: hidden !important;
 }
 
-/* Panel Lateral Derecho de Información del Canal */
-.player-side-panel {
+/* Barra Inferior del Reproductor (Info de Canal + Botones Pequeños Compactos) */
+.player-controls-compact-bar {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: rgba(12, 12, 16, 0.85);
+  border: 1px solid var(--glass-border);
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  min-height: 36px;
+}
+
+.player-title-box {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .live-badge-red {
   background: var(--red-bright);
   color: #ffffff;
-  font-size: 0.8rem;
+  font-size: 0.68rem;
   font-weight: 800;
-  padding: 0.4rem 0.75rem;
+  padding: 0.2rem 0.45rem;
   border-radius: 4px;
-  text-align: center;
   letter-spacing: 0.5px;
-  box-shadow: 0 0 10px rgba(204, 0, 0, 0.5);
+  white-space: nowrap;
+  box-shadow: 0 0 8px rgba(204, 0, 0, 0.4);
 }
 
 .side-channel-title {
-  font-size: 1.1rem;
+  font-size: 0.85rem;
   font-weight: 800;
   color: #ffffff;
   text-transform: uppercase;
-  line-height: 1.2;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* Botones Pequeños y Compactos para Unmute y Expandir */
 .side-controls {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: auto;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
 }
 
-.btn-side-control {
+.btn-side-control-small {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--glass-border);
-  color: #fff;
-  padding: 0.5rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
+  color: #ffffff;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
   font-weight: 700;
   cursor: pointer;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   transition: var(--transition-fast);
 }
 
-.btn-side-control:hover, .btn-side-control:focus {
+.btn-side-control-small:hover, .btn-side-control-small:focus {
   background: var(--red-bright);
   border-color: var(--red-bright);
+  box-shadow: 0 0 8px rgba(204, 0, 0, 0.4);
 }
 
 /* Barra EPG Infobar */
 .epg-info-bar {
-  background: rgba(12, 12, 16, 0.85);
+  background: rgba(10, 10, 14, 0.85);
   border: 1px solid var(--glass-border);
-  padding: 0.5rem 1rem;
+  padding: 0.25rem 0.6rem;
   border-radius: 6px;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;

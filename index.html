@@ -83,38 +83,31 @@
 
     </aside>
 
-    <!-- COLUMNA DERECHA: REPRODUCTOR + INFO DE SEÑAL -->
+    <!-- COLUMNA DERECHA: REPRODUCTOR MAXIMIZADO + CONTROLES PEQUEÑOS COMPACTOS -->
     <section class="player-column">
       
-      <div class="player-top-wrapper">
-        <!-- Contenedor del Reproductor Video HTML5 / Hls.js / Iframe Embed -->
-        <div id="player-container" class="player-card">
-          <video id="video-player" class="focusable" tabindex="0" playsinline autoplay muted></video>
-          <iframe id="iframe-player" class="focusable" tabindex="0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="display: none;"></iframe>
+      <!-- Contenedor del Reproductor (Ocupa el máximo espacio posible) -->
+      <div id="player-container" class="player-card">
+        <video id="video-player" class="focusable" tabindex="0" playsinline autoplay muted></video>
+        <iframe id="iframe-player" class="focusable" tabindex="0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="display: none;"></iframe>
 
-          <!-- Overlay Vista Previa & Ayuda Fullscreen -->
-          <div class="player-preview-overlay">
-            <div class="fullscreen-hint">
-              <span>Doble Clic: Pantalla Completa</span>
-            </div>
-          </div>
-
-          <!-- Banner de Reconexión Automática -->
-          <div id="reconnect-overlay" class="reconnect-overlay hidden">
-            <div class="reconnect-spinner"></div>
-            <div class="reconnect-title">Reconectando Transmisión...</div>
-            <div id="reconnect-count-text" class="reconnect-desc">Restableciendo flujo de señal IPTV</div>
-          </div>
+        <!-- Banner de Reconexión Automática -->
+        <div id="reconnect-overlay" class="reconnect-overlay hidden">
+          <div class="reconnect-spinner"></div>
+          <div class="reconnect-title">Reconectando Transmisión...</div>
+          <div id="reconnect-count-text" class="reconnect-desc">Restableciendo flujo de señal IPTV</div>
         </div>
+      </div>
 
-        <!-- Panel Lateral Derecho con Badge 'TV EN DIRECTO' y Nombre del Canal -->
-        <div class="player-side-panel">
-          <div class="live-badge-red">TV EN DIRECTO</div>
-          <div id="side-channel-title" class="side-channel-title">CARGANDO...</div>
-          <div class="side-controls">
-            <button id="btn-mute" class="btn-side-control focusable">🔇 Unmute</button>
-            <button id="btn-fullscreen" class="btn-side-control focusable" title="Pantalla Completa">🗖 Expandir</button>
-          </div>
+      <!-- Barra de Info del Canal y Botones Pequeños Compactos -->
+      <div class="player-controls-compact-bar">
+        <div class="player-title-box">
+          <span class="live-badge-red">TV EN DIRECTO</span>
+          <span id="side-channel-title" class="side-channel-title">CARGANDO...</span>
+        </div>
+        <div class="side-controls">
+          <button id="btn-mute" class="btn-side-control-small focusable">🔇 Unmute</button>
+          <button id="btn-fullscreen" class="btn-side-control-small focusable" title="Pantalla Completa">🗖 Expandir</button>
         </div>
       </div>
 
