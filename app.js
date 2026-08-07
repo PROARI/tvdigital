@@ -24,8 +24,13 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 let reconnectTimer = null;
 let isReconnecting = false;
 
-// Registro PWA Install Prompt
+// Captura global inmediata del evento de instalación PWA (antes de DOMContentLoaded)
 let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  console.log('[PWA] Evento beforeinstallprompt capturado inmediatamente.');
+});
 
 // DOM Elements
 let videoElement, iframeElement, reconnectOverlay, reconnectCountText;
@@ -77,7 +82,7 @@ function initOrientation() {
 }
 
 /* ==========================================================================
-   REFERENCIAS DOM Y PWA
+   REFERENCIAS DOM Y PWA INSTANTÁNEA
    ========================================================================== */
 
 function initDOMReferences() {
@@ -110,64 +115,49 @@ function initPWA() {
   const pwaModal = document.getElementById('pwa-install-modal');
   const btnInstallModal = document.getElementById('btn-pwa-install-modal');
   const btnDismissModal = document.getElementById('btn-pwa-dismiss');
-  const iosInstructions = document.getElementById('pwa-ios-instructions');
+  const browserInstructions = document.getElementById('pwa-browser-instructions');
 
-  // Si la app ya está instalada y corriendo en modo Standalone, no mostrar el modal
+  // Si la app ya está instalada y ejecutándose en modo Standalone, no mostrar modal
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (isStandalone) {
-    console.log('[PWA] La aplicación ya está instalada y ejecutándose en modo standalone.');
+    console.log('[PWA] Ejecutando en modo App Standalone instalada.');
     return;
   }
 
-  // Comprobar si el usuario ya descartó el aviso en esta sesión
   const isDismissed = sessionStorage.getItem('pwa_prompt_dismissed') === 'true';
 
-  // 1. Evento antes de instalar (Android Chrome, Edge, Brave, Desktop Chrome)
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-
-    if (!isDismissed && pwaModal) {
-      setTimeout(() => {
-        pwaModal.classList.add('active');
-      }, 600);
-    }
-  });
-
-  // 2. Dispositivos iOS Safari (Mostrar instrucciones personalizadas)
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  if (isIOS && !isStandalone && !isDismissed && pwaModal) {
-    if (iosInstructions) iosInstructions.classList.remove('hidden');
-    if (btnInstallModal) btnInstallModal.style.display = 'none';
-    setTimeout(() => {
-      pwaModal.classList.add('active');
-    }, 600);
-  }
-
-  // 3. Fallback: Mostrar modal al ingresar si no está instalada aún y no fue descartada
+  // Desplegar modal al ingresar si no está instalada y no fue descartada en esta sesión
   if (!isStandalone && !isDismissed && pwaModal) {
     setTimeout(() => {
-      if (!pwaModal.classList.contains('active') && !sessionStorage.getItem('pwa_prompt_dismissed')) {
-        pwaModal.classList.add('active');
-      }
-    }, 1000);
+      pwaModal.classList.add('active');
+    }, 400);
   }
 
-  // Acciones de Botones del Modal
+  // Acción al hacer clic en '📲 Instalar Aplicación' (Ejecución Inmediata)
   if (btnInstallModal) {
-    btnInstallModal.addEventListener('click', () => {
+    btnInstallModal.addEventListener('click', async () => {
       if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
-          if (choiceResult.outcome === 'accepted') {
-            console.log('[PWA] El usuario instaló la aplicación');
+        try {
+          console.log('[PWA] Disparando diálogo nativo de instalación...');
+          deferredPrompt.prompt();
+          const { outcome } = await deferredPrompt.userChoice;
+          console.log(`[PWA] Resultado de usuario: ${outcome}`);
+          if (outcome === 'accepted') {
+            showNotificationToast('🎉 ¡Gracias por instalar TV DIGITAL LIBRE!');
           }
+        } catch (err) {
+          console.error('[PWA] Error durante prompt:', err);
+        } finally {
           deferredPrompt = null;
           if (pwaModal) pwaModal.classList.remove('active');
-        });
+        }
       } else {
-        showNotificationToast('📲 Selecciona "Añadir a pantalla de inicio" en las opciones de tu navegador.');
-        if (pwaModal) pwaModal.classList.remove('active');
+        // Si el navegador no permite disparo programático sin menú manual (e.g. Safari o navegador móvil)
+        if (browserInstructions) {
+          browserInstructions.classList.remove('hidden');
+          browserInstructions.style.animation = 'shake 0.4s ease';
+        }
+        showNotificationToast('📲 Sigue las instrucciones en pantalla o usa el menú de tu navegador.');
       }
     });
   }
