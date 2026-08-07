@@ -309,7 +309,7 @@ function playChannel(channel) {
       hlsPlayer.attachMedia(videoElement);
 
       hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
-        videoElement.play().catch(err => console.log('Autoplay bloqueado por el navegador:', err));
+        playVideoWithAudio();
       });
 
       hlsPlayer.on(Hls.Events.ERROR, (event, data) => {
@@ -333,8 +333,41 @@ function playChannel(channel) {
 
     } else {
       videoElement.src = url;
-      videoElement.play().catch(err => console.log('Autoplay bloqueado:', err));
+      playVideoWithAudio();
     }
+  }
+}
+
+// Función para reproducir el canal directamente con audio activo
+function playVideoWithAudio() {
+  if (!videoElement) return;
+  
+  // Activar audio
+  videoElement.muted = false;
+  videoElement.volume = 1.0;
+
+  const btnMute = document.getElementById('btn-mute');
+  if (btnMute) btnMute.textContent = '🔊 Audio Activo';
+
+  const playPromise = videoElement.play();
+  if (playPromise !== undefined) {
+    playPromise.catch(err => {
+      console.log('Autoplay directo restringido por el navegador. Reproduciendo y activando audio:', err);
+      videoElement.muted = true;
+      videoElement.play().then(() => {
+        // En el primer toque/clic o navegación del usuario, activar audio inmediatamente
+        const enableAudio = () => {
+          videoElement.muted = false;
+          if (btnMute) btnMute.textContent = '🔊 Audio Activo';
+          document.removeEventListener('click', enableAudio);
+          document.removeEventListener('keydown', enableAudio);
+          document.removeEventListener('touchstart', enableAudio);
+        };
+        document.addEventListener('click', enableAudio, { once: true });
+        document.addEventListener('keydown', enableAudio, { once: true });
+        document.addEventListener('touchstart', enableAudio, { once: true });
+      });
+    });
   }
 }
 
@@ -485,7 +518,7 @@ function setupEventListeners() {
     btnMute.addEventListener('click', () => {
       if (videoElement) {
         videoElement.muted = !videoElement.muted;
-        btnMute.textContent = videoElement.muted ? '🔇 Unmute' : '🔊 Silenciar';
+        btnMute.textContent = videoElement.muted ? '🔇 Silenciado' : '🔊 Audio Activo';
       }
     });
   }
@@ -857,7 +890,7 @@ function importChannelsFromJSONFile(file) {
   reader.readAsText(file);
 }
 
-// Función para cargar automáticamente la lista M3U desde la URL remota de Dropbox
+// Función para cargar automáticamente la lista M3U oficial desde el enlace original de Dropbox
 async function fetchRemoteM3UPlaylist(showToast = false) {
   try {
     const fetchUrl = REMOTE_M3U_URL + '&t=' + Date.now();
@@ -870,10 +903,11 @@ async function fetchRemoteM3UPlaylist(showToast = false) {
         const savedLocal = getSavedUserChannels() || [];
         const map = new Map();
 
-        // 1. Agregar canales que vienen de la lista M3U de Dropbox
-        parsedChannels.forEach(ch => map.set(ch.id, ch));
-        // 2. Preservar canales agregados o editados por el usuario
+        // 1. Insertar canales guardados locales
         savedLocal.forEach(ch => map.set(ch.id, ch));
+
+        // 2. Sobrescribir con los canales FRESCOS recién jalados del enlace M3U de Dropbox (PANDO M3U)
+        parsedChannels.forEach(ch => map.set(ch.id, ch));
 
         channelsList = Array.from(map.values());
         saveChannels();
@@ -881,19 +915,20 @@ async function fetchRemoteM3UPlaylist(showToast = false) {
         renderChannels();
 
         if (showToast) {
-          showNotificationToast("✅ ¡Se jalaron " + parsedChannels.length + " canales en vivo desde la lista PANDO M3U!");
+          showNotificationToast("✅ ¡Se sincronizaron " + parsedChannels.length + " canales en vivo desde el enlace original PANDO M3U de Dropbox!");
         }
         return true;
       }
     }
   } catch (e) {
-    console.warn("No se pudo jalar la lista M3U remota (modo offline):", e);
+    console.warn("No se pudo jalar la lista M3U de Dropbox (modo offline):", e);
   }
   return false;
 }
 
 function parseM3UText(m3uText) {
-  const lines = m3uText.split('\n');
+  if (!m3uText) return [];
+  const lines = m3uText.split(/\r?\n/);
   const result = [];
   let tempName = '';
   let tempLogo = '';
@@ -902,10 +937,10 @@ function parseM3UText(m3uText) {
   lines.forEach((line) => {
     line = line.trim();
     if (line.startsWith('#EXTINF:')) {
-      const logoMatch = line.match(/tvg-logo="([^"]+)"/);
+      const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
       tempLogo = logoMatch ? logoMatch[1] : '';
 
-      const groupMatch = line.match(/group-title="([^"]+)"/);
+      const groupMatch = line.match(/group-title="([^"]+)"/i);
       if (groupMatch) {
         let group = groupMatch[1].toUpperCase();
         if (group.includes('LOCAL')) tempGroup = 'Locales';
@@ -917,8 +952,10 @@ function parseM3UText(m3uText) {
         tempGroup = 'Locales';
       }
 
-      const commaParts = line.split(',');
-      tempName = commaParts[commaParts.length - 1].trim();
+      const commaIndex = line.lastIndexOf(',');
+      if (commaIndex !== -1) {
+        tempName = line.substring(commaIndex + 1).trim();
+      }
     } else if (line.startsWith('http://') || line.startsWith('https://')) {
       if (tempName) {
         const safeId = 'ch-m3u-' + tempName.toLowerCase().replace(/[^a-z0-9]/g, '-');
