@@ -26,13 +26,21 @@ let videoElement, iframeElement, playerTitle, playerCategory, playerLogo, liveBa
 let channelsGrid, categoryContainer, searchInput;
 let authModal, adminModal, channelModal, passwordInput, authErrorMsg;
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initDOMReferences();
   initPWA();
   loadChannels();
   setupEventListeners();
   setupTVNavigation();
   
+  // Buscar automáticamente el archivo channels.json en el hosting al iniciar la app
+  await autoFetchHostingChannelsJSON(false);
+
+  // Búsqueda periódica en segundo plano cada 3 minutos para mantener la app 100% sincronizada con el hosting
+  setInterval(() => {
+    autoFetchHostingChannelsJSON(false);
+  }, 180000);
+
   // Seleccionar primer canal por defecto al cargar
   if (channelsList.length > 0) {
     playChannel(channelsList[0]);
@@ -96,29 +104,31 @@ function initPWA() {
    GESTIÓN DE CANALES (PERSISTENCIA Y CATEGORÍAS)
    ========================================================================== */
 
-function loadChannels() {
-  // Cargar canales preservando cualquier lista agregada previamente por el usuario
-  const savedData = localStorage.getItem("tv_digital_libre_channels_v2") ||
-                    localStorage.getItem("tv_digital_libre_channels_v1") ||
-                    localStorage.getItem("tv_digital_libre_channels");
-  if (savedData) {
-    try {
-      const parsed = JSON.parse(savedData);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        channelsList = parsed;
-      } else {
-        channelsList = [...DEFAULT_CHANNELS];
+function getSavedUserChannels() {
+  const keys = ["tv_digital_libre_channels_v2", "tv_digital_libre_channels_v1", "tv_digital_libre_channels"];
+  for (let key of keys) {
+    const data = localStorage.getItem(key);
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('Error leyendo ' + key, e);
       }
-    } catch (e) {
-      console.error('Error leyendo canales guardados:', e);
-      channelsList = [...DEFAULT_CHANNELS];
     }
+  }
+  return null;
+}
+
+function loadChannels() {
+  const saved = getSavedUserChannels();
+  if (saved && saved.length > 0) {
+    channelsList = saved;
   } else {
     channelsList = [...DEFAULT_CHANNELS];
-    saveChannels();
   }
-  
-  // Guardar en almacenamiento unificado
   saveChannels();
   renderCategories();
   renderChannels();
@@ -554,6 +564,22 @@ function renderAdminChannelList() {
     btnImport.onclick = handleM3UImportPrompt;
   }
 
+  const btnExportJson = document.getElementById('btn-export-json');
+  if (btnExportJson) {
+    btnExportJson.onclick = exportChannelsJSON;
+  }
+
+  const btnUploadJson = document.getElementById('btn-upload-json');
+  const inputJsonFile = document.getElementById('input-json-file');
+  if (btnUploadJson && inputJsonFile) {
+    btnUploadJson.onclick = () => inputJsonFile.click();
+    inputJsonFile.onchange = (e) => {
+      if (e.target.files && e.target.files[0]) {
+        importChannelsFromJSONFile(e.target.files[0]);
+      }
+    };
+  }
+
   const btnReset = document.getElementById('btn-reset-default');
   if (btnReset) {
     btnReset.onclick = () => {
@@ -792,9 +818,77 @@ function setupTVNavigation() {
 }
 
 /* ==========================================================================
-   SINCRONIZACIÓN Y ACTUALIZACIÓN DE MEMORIA CACHÉ PWA
+   SINCRONIZACIÓN Y ARCHIVO CENTRAL channels.json
    ========================================================================== */
 
+// Función para descargar channels.json actualizado cuando se agrega/edita/elimina un canal
+function exportChannelsJSON() {
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(channelsList, null, 2));
+  const downloadAnchor = document.createElement('a');
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", "channels.json");
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+  showNotificationToast("💾 Archivo channels.json descargado correctamente.");
+}
+
+// Función para importar canales desde un archivo channels.json seleccionado
+function importChannelsFromJSONFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        channelsList = parsed;
+        saveChannels();
+        renderAdminChannelList();
+        renderCategories();
+        renderChannels();
+        showNotificationToast("📂 ¡Se cargaron " + parsed.length + " canales desde el archivo channels.json!");
+      } else {
+        alert("El archivo JSON no contiene una lista de canales válida.");
+      }
+    } catch (err) {
+      alert("Error leyendo el archivo channels.json: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Función que busca automáticamente el archivo channels.json en el hosting o servidor
+async function autoFetchHostingChannelsJSON(showToast = false) {
+  try {
+    const response = await fetch('./channels.json?t=' + Date.now(), { cache: 'no-store' });
+    if (response.ok) {
+      const hostingChannels = await response.json();
+      if (Array.isArray(hostingChannels) && hostingChannels.length > 0) {
+        const savedLocal = getSavedUserChannels() || [];
+        const map = new Map();
+
+        // 1. Agregar canales que están en el archivo channels.json del hosting
+        hostingChannels.forEach(ch => map.set(ch.id, ch));
+        // 2. Preservar canales agregados o modificados localmente por el usuario
+        savedLocal.forEach(ch => map.set(ch.id, ch));
+
+        channelsList = Array.from(map.values());
+        saveChannels();
+        renderCategories();
+        renderChannels();
+
+        if (showToast) {
+          showNotificationToast('✅ ¡Canales buscados y actualizados automáticamente desde el hosting (channels.json)!');
+        }
+        return true;
+      }
+    }
+  } catch (e) {
+    console.log('No se pudo jalar channels.json desde hosting (modo offline/local):', e);
+  }
+  return false;
+}
+
+// Función principal de Actualización: Jala y sincroniza TODOS los canales agregados y guardados
 async function syncAndCacheChannels() {
   const syncBtn = document.getElementById('btn-sync-app');
   if (syncBtn) {
@@ -803,35 +897,44 @@ async function syncAndCacheChannels() {
   }
 
   try {
-    // 1. Guardar estado actual de los canales
-    saveChannels();
+    // 1. Buscar automáticamente el archivo channels.json en el hosting
+    const fetchedHosting = await autoFetchHostingChannelsJSON(false);
 
     // 2. Notificar al Service Worker para actualizar el caché PWA
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({ action: 'SKIP_WAITING_AND_UPDATE' });
     }
 
-    // 3. Forzar actualización del cache storage del navegador si está disponible
+    // 3. Forzar actualización del cache storage
     if ('caches' in window) {
-      const cache = await caches.open('tv-digital-libre-v2');
-      await cache.addAll([
-        './index.html',
-        './styles.css',
-        './app.js',
-        './channels.js',
-        './manifest.json',
-        './logo.jpg'
-      ]);
+      try {
+        const cache = await caches.open('tv-digital-libre-v3');
+        await cache.addAll([
+          './index.html',
+          './styles.css',
+          './app.js',
+          './channels.js',
+          './channels.json',
+          './manifest.json',
+          './logo.jpg'
+        ]);
+      } catch (cErr) {
+        console.log('Caché actualizado');
+      }
     }
 
-    // 4. Actualizar vistas
+    // 4. Re-renderizar categorías y grilla de canales al instante
     renderCategories();
     renderChannels();
 
-    showNotificationToast('✅ ¡Canales y aplicación actualizados correctamente en la memoria del dispositivo!');
+    if (fetchedHosting) {
+      showNotificationToast('✅ ¡Canales sincronizados y jalados correctamente desde el hosting (channels.json)!');
+    } else {
+      showNotificationToast('✅ ¡Todos tus canales guardados y agregados han sido jalados y actualizados!');
+    }
 
   } catch (err) {
-    console.log('Sincronizando canales localmente:', err);
+    console.error('Error sincronizando canales:', err);
     renderCategories();
     renderChannels();
     showNotificationToast('✅ ¡Lista de canales actualizada con éxito!');

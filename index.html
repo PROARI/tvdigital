@@ -211,8 +211,11 @@
       <div class="modal-body">
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
           <button id="btn-add-channel" class="btn-primary focusable">➕ Agregar Canal</button>
-          <button id="btn-import-m3u" class="btn-secondary focusable">📥 Importar Lista M3U</button>
-          <button id="btn-reset-default" class="btn-secondary focusable" style="color: var(--warning);">🔄 Restablecer Predeterminados</button>
+          <button id="btn-import-m3u" class="btn-secondary focusable">📥 Importar M3U</button>
+          <button id="btn-export-json" class="btn-secondary focusable" title="Descargar archivo channels.json actualizado">💾 Descargar channels.json</button>
+          <button id="btn-upload-json" class="btn-secondary focusable" title="Cargar canales desde archivo channels.json">📂 Cargar channels.json</button>
+          <input type="file" id="input-json-file" accept=".json" style="display: none;">
+          <button id="btn-reset-default" class="btn-secondary focusable" style="color: var(--warning);">🔄 Restablecer</button>
         </div>
 
         <h4 style="margin-top: 1rem; color: var(--text-muted);">Canales Registrados:</h4>
