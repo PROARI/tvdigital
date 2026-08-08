@@ -202,6 +202,25 @@ function initPWA() {
     return;
   }
 
+  // Comprobar contador de rechazos acumulados (Máximo 3 rechazos)
+  let dismissCount = parseInt(localStorage.getItem('pwa_dismiss_count') || '0', 10);
+  const neverShow = localStorage.getItem('pwa_never_show') === 'true' || dismissCount >= 3;
+
+  const registerDismissal = () => {
+    dismissCount += 1;
+    localStorage.setItem('pwa_dismiss_count', dismissCount.toString());
+    sessionStorage.setItem('pwa_prompt_dismissed', 'true');
+
+    if (dismissCount >= 3) {
+      localStorage.setItem('pwa_never_show', 'true');
+      console.log('[PWA] Límite alcanzado: 3 rechazos registrados. No se volverá a mostrar la invitación de instalación.');
+    } else {
+      console.log(`[PWA] Invitación de instalación rechazada/descartada (${dismissCount}/3).`);
+    }
+
+    if (pwaModal) pwaModal.classList.remove('active');
+  };
+
   const triggerDirectInstall = async () => {
     if (deferredPrompt) {
       try {
@@ -212,6 +231,8 @@ function initPWA() {
         if (outcome === 'accepted') {
           showNotificationToast('🎉 ¡Gracias por instalar TV DIGITAL LIBRE!');
           if (btnHeaderInstall) btnHeaderInstall.style.display = 'none';
+        } else if (outcome === 'dismissed') {
+          registerDismissal();
         }
       } catch (err) {
         console.error('[PWA] Error durante prompt:', err);
@@ -228,15 +249,15 @@ function initPWA() {
     }
   };
 
-  // Botón directo en la Cabecera Principal (📲 INSTALAR APP)
+  // Botón directo en la Cabecera Principal (📲 INSTALAR APP) si estuviera activo
   if (btnHeaderInstall) {
     btnHeaderInstall.addEventListener('click', triggerDirectInstall);
   }
 
-  const isDismissed = sessionStorage.getItem('pwa_prompt_dismissed') === 'true';
+  const isSessionDismissed = sessionStorage.getItem('pwa_prompt_dismissed') === 'true';
 
-  // Desplegar modal al ingresar si no está instalada y no fue descartada en esta sesión
-  if (!isStandalone && !isDismissed && pwaModal) {
+  // Desplegar modal al ingresar si NO está instalada, NO se ha alcanzado el límite de 3 rechazos y NO se descartó en la sesión activa
+  if (!isStandalone && !neverShow && !isSessionDismissed && pwaModal) {
     setTimeout(() => {
       pwaModal.classList.add('active');
     }, 400);
@@ -248,10 +269,7 @@ function initPWA() {
   }
 
   if (btnDismissModal) {
-    btnDismissModal.addEventListener('click', () => {
-      sessionStorage.setItem('pwa_prompt_dismissed', 'true');
-      if (pwaModal) pwaModal.classList.remove('active');
-    });
+    btnDismissModal.addEventListener('click', registerDismissal);
   }
 }
 
