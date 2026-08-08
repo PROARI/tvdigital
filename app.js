@@ -42,10 +42,86 @@ document.addEventListener('DOMContentLoaded', () => {
   initPWA();
   initClock();
   initOrientation();
+  initTVMode();
   loadChannels();
   setupEventListeners();
   setupTVNavigation();
 });
+
+/* ==========================================================================
+   MÓDULO DE DETECCIÓN Y CONFIGURACIÓN MODO TV (ANDROID TV / GOOGLE TV)
+   ========================================================================== */
+
+function detectTVDevice() {
+  const ua = (navigator.userAgent || navigator.vendor || window.opera || '').toLowerCase();
+  
+  // 1. Detección por User Agent de Televisores y Smart TV
+  const tvKeywords = [
+    'android tv', 'googletv', 'smarttv', 'smart-tv', 'leanback', 'appletv',
+    'hbbtv', 'netcast', 'viera', 'tizen', 'webos', 'bravia', 'aftb', 'aftt', 'mibox',
+    'shield', 'nexus player', 'chromecast', 'tv', 'crkey'
+  ];
+  
+  const isTvUA = tvKeywords.some(keyword => ua.includes(keyword));
+
+  // 2. Override manual por parámetro URL (?mode=tv o ?tv=1) o localStorage
+  const urlParams = new URLSearchParams(window.location.search);
+  const forceTV = urlParams.get('mode') === 'tv' || urlParams.get('tv') === '1' || localStorage.getItem('force_tv_mode') === 'true';
+  const forceMobile = urlParams.get('mode') === 'mobile' || localStorage.getItem('force_mobile_mode') === 'true';
+
+  if (forceMobile) return false;
+  if (forceTV || isTvUA) return true;
+
+  // 3. Verificación de pantalla grande sin puntero fino (Smart TV browser)
+  const isLargeScreen = window.innerWidth >= 960 && window.innerHeight >= 540;
+  const isNoFinePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches === false;
+
+  return (isTvUA || (isLargeScreen && isNoFinePointer));
+}
+
+function initTVMode() {
+  const isTV = detectTVDevice();
+  window.isTVMode = isTV;
+
+  if (isTV) {
+    document.body.classList.add('is-tv-mode');
+    console.log('[TV Engine] Modo Android TV / Smart TV activado automáticamente.');
+
+    // Mostrar distintivo discreto de Modo TV
+    if (!document.getElementById('tv-mode-badge')) {
+      const badge = document.createElement('div');
+      badge.id = 'tv-mode-badge';
+      badge.className = 'tv-mode-badge';
+      badge.innerHTML = '📺 MODO TV ACTIVO';
+      document.body.appendChild(badge);
+    }
+
+    // Foco Inicial automático al cargar
+    setTimeout(() => {
+      setInitialTVFocus();
+    }, 500);
+  } else {
+    document.body.classList.remove('is-tv-mode');
+    const badge = document.getElementById('tv-mode-badge');
+    if (badge) badge.remove();
+  }
+}
+
+function setInitialTVFocus() {
+  const activeCard = document.querySelector('.channel-card.active');
+  const firstCard = document.querySelector('.channel-card');
+  const catBtn = document.getElementById('cat-prev-btn');
+
+  if (activeCard) {
+    activeCard.focus();
+    activeCard.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  } else if (firstCard) {
+    firstCard.focus();
+    firstCard.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  } else if (catBtn) {
+    catBtn.focus();
+  }
+}
 
 /* ==========================================================================
    INICIALIZACIÓN DE RELOJ EN TIEMPO REAL Y ORIENTACIÓN HORIZONTAL
@@ -376,7 +452,7 @@ function renderChannels(filterText = '') {
     const isActive = activeChannel && activeChannel.id === ch.id;
 
     return `
-      <div class="channel-card focusable ${isActive ? 'active' : ''}" data-id="${ch.id}">
+      <div class="channel-card focusable ${isActive ? 'active' : ''}" data-id="${ch.id}" tabindex="0">
         <span class="channel-num">${channelNum}</span>
         <div class="channel-logo-wrapper">
           <img class="channel-logo-img" src="${ch.logo}" alt="${ch.name}" onerror="this.src='logo.jpg'">
@@ -476,6 +552,10 @@ function playChannel(channel) {
     }
 
     const url = parsed.url;
+    
+    // Forzar siempre audio activo
+    videoElement.muted = false;
+    videoElement.volume = 1.0;
 
     if (url.includes('.m3u8') && Hls.isSupported()) {
       hlsPlayer = new Hls({
@@ -491,7 +571,7 @@ function playChannel(channel) {
       hlsPlayer.attachMedia(videoElement);
 
       hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
-        videoElement.play().catch(err => console.log('Autoplay bloqueado:', err));
+        ensureAudioUnlocked(videoElement);
       });
 
       hlsPlayer.on(Hls.Events.ERROR, (event, data) => {
@@ -512,11 +592,37 @@ function playChannel(channel) {
 
     } else {
       videoElement.src = url;
-      videoElement.play().catch(err => console.log('Autoplay bloqueado:', err));
+      ensureAudioUnlocked(videoElement);
     }
   }
 
   renderChannels(searchInput ? searchInput.value : '');
+}
+
+function ensureAudioUnlocked(video) {
+  if (!video) return;
+  video.muted = false;
+  video.volume = 1.0;
+
+  const playPromise = video.play();
+  if (playPromise !== undefined) {
+    playPromise.then(() => {
+      console.log('[Audio Engine] Reproduciendo señal con sonido activado.');
+    }).catch(err => {
+      console.warn('[Audio Engine] Autoplay con audio requiere interacción:', err);
+      video.muted = true;
+      video.play().then(() => {
+        const unlock = () => {
+          if (videoElement) {
+            videoElement.muted = false;
+            videoElement.volume = 1.0;
+          }
+          ['click', 'keydown', 'touchstart'].forEach(evt => document.removeEventListener(evt, unlock));
+        };
+        ['click', 'keydown', 'touchstart'].forEach(evt => document.addEventListener(evt, unlock, { once: true }));
+      });
+    });
+  }
 }
 
 function setupVideoEvents() {
@@ -662,16 +768,6 @@ function setupEventListeners() {
     });
   }
 
-  const btnMute = document.getElementById('btn-mute');
-  if (btnMute) {
-    btnMute.addEventListener('click', () => {
-      if (videoElement) {
-        videoElement.muted = !videoElement.muted;
-        btnMute.textContent = videoElement.muted ? '🔇 Unmute' : '🔊 Silenciar';
-      }
-    });
-  }
-
   const btnFullscreen = document.getElementById('btn-fullscreen');
   if (btnFullscreen) {
     btnFullscreen.addEventListener('click', toggleFullscreen);
@@ -702,6 +798,8 @@ function verifyPassword() {
 function openAdminModal() {
   renderAdminChannelList();
   adminModal.classList.add('active');
+  const btnAdd = document.getElementById('btn-add-channel');
+  if (btnAdd) setTimeout(() => btnAdd.focus(), 100);
 }
 
 function closeAllModals() {
@@ -729,10 +827,10 @@ function renderAdminChannelList() {
         </div>
       </div>
       <div class="admin-item-actions">
-        <button class="btn-secondary" onclick="moveChannelUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3;"' : ''}>▲</button>
-        <button class="btn-secondary" onclick="moveChannelDown(${index})" ${index === channelsList.length - 1 ? 'disabled style="opacity:0.3;"' : ''}>▼</button>
-        <button class="btn-secondary" onclick="editChannel('${ch.id}')">✏️</button>
-        <button class="btn-danger" onclick="deleteChannel('${ch.id}')">🗑️</button>
+        <button class="btn-secondary focusable" onclick="moveChannelUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3;"' : ''}>▲</button>
+        <button class="btn-secondary focusable" onclick="moveChannelDown(${index})" ${index === channelsList.length - 1 ? 'disabled style="opacity:0.3;"' : ''}>▼</button>
+        <button class="btn-secondary focusable" onclick="editChannel('${ch.id}')">✏️</button>
+        <button class="btn-danger focusable" onclick="deleteChannel('${ch.id}')">🗑️</button>
       </div>
     </div>
   `).join('');
@@ -805,6 +903,7 @@ function openChannelModal(channelToEdit = null) {
   }
 
   channelModal.classList.add('active');
+  setTimeout(() => nameInput.focus(), 100);
 
   document.getElementById('channel-form').onsubmit = (e) => {
     e.preventDefault();
@@ -857,48 +956,177 @@ window.deleteChannel = function(id) {
    NAVEGACIÓN POR TECLADO / CONTROL REMOTO (ANDROID TV D-PAD)
    ========================================================================== */
 
+/* ==========================================================================
+   MOTOR DE NAVEGACIÓN ESPACIAL D-PAD PARA CONTROL REMOTO (ANDROID TV)
+   ========================================================================== */
+
 function setupTVNavigation() {
   document.addEventListener('keydown', (e) => {
-    const focusables = Array.from(document.querySelectorAll('.focusable, .channel-card, .icon-btn, .cat-arrow-btn'));
-    if (focusables.length === 0) return;
+    // Código de teclas de Control Remoto de Televisores (Android TV / WebOS / Tizen)
+    const key = e.key;
+    const keyCode = e.keyCode;
 
-    let currentFocus = document.activeElement;
-    let idx = focusables.indexOf(currentFocus);
+    const isUp = key === 'ArrowUp' || key === 'w' || key === 'W' || keyCode === 38 || keyCode === 33 || keyCode === 427;
+    const isDown = key === 'ArrowDown' || key === 's' || key === 'S' || keyCode === 40 || keyCode === 34 || keyCode === 428;
+    const isLeft = key === 'ArrowLeft' || key === 'a' || key === 'A' || keyCode === 37;
+    const isRight = key === 'ArrowRight' || key === 'd' || key === 'D' || keyCode === 39;
+    const isEnter = key === 'Enter' || key === ' ' || keyCode === 13 || keyCode === 32 || keyCode === 29443 || keyCode === 65385;
+    const isBack = key === 'Escape' || key === 'Backspace' || key === 'BrowserBack' || key === 'x' || key === 'X' || keyCode === 27 || keyCode === 8 || keyCode === 461 || keyCode === 10009 || keyCode === 88;
 
-    switch (e.key) {
-      case 'ArrowRight':
+    if (!isUp && !isDown && !isLeft && !isRight && !isEnter && !isBack) return;
+
+    const activeModal = document.querySelector('.modal-backdrop.active');
+    
+    // -------------------------------------------------------------
+    // MANEJO DE TECLA ATRÁS (JERARQUÍA Y CIERRES DE PANTALLA EN TV)
+    // -------------------------------------------------------------
+    if (isBack) {
+      e.preventDefault();
+      
+      // 1. Si hay un Modal activo, cerrarlo
+      if (activeModal) {
+        closeAllModals();
+        setInitialTVFocus();
+        return;
+      }
+
+      // 2. Si el cuadro de búsqueda está abierto, cerrarlo
+      const searchBox = document.getElementById('search-box-container');
+      if (searchBox && !searchBox.classList.contains('hidden')) {
+        searchBox.classList.add('hidden');
+        setInitialTVFocus();
+        return;
+      }
+
+      // 3. Si el reproductor está en Pantalla Completa, salir
+      if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+        toggleFullscreen();
+        return;
+      }
+
+      // 4. Si el foco está en los controles del reproductor, regresar a la tarjeta activa de canal
+      const muteBtn = document.getElementById('btn-mute');
+      const fullscreenBtn = document.getElementById('btn-fullscreen');
+      if (document.activeElement === muteBtn || document.activeElement === fullscreenBtn) {
+        setInitialTVFocus();
+        return;
+      }
+
+      // 5. Si está en la lista de canales, mover foco a las flechas de categoría
+      const catBtn = document.getElementById('cat-prev-btn');
+      if (catBtn && document.activeElement && document.activeElement.classList.contains('channel-card')) {
+        catBtn.focus();
+        return;
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------
+    // MANEJO DE TECLA ENTER / OK EN CONTROL REMOTO
+    // -------------------------------------------------------------
+    if (isEnter) {
+      const activeEl = document.activeElement;
+
+      // Permitir la ejecución estándar de click para botones y campos nativos
+      if (activeEl && (activeEl.tagName === 'BUTTON' || activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA')) {
+        return; 
+      }
+
+      if (activeEl && activeEl.classList.contains('channel-card')) {
         e.preventDefault();
-        idx = (idx + 1) % focusables.length;
-        focusables[idx].focus();
-        break;
-      case 'ArrowLeft':
+        activeEl.click();
+        return;
+      }
+
+      if (activeEl === videoElement || activeEl === iframeElement) {
         e.preventDefault();
-        idx = (idx - 1 + focusables.length) % focusables.length;
-        focusables[idx].focus();
-        break;
-      case 'ArrowDown':
-        e.preventDefault();
-        idx = Math.min(idx + 1, focusables.length - 1);
-        focusables[idx].focus();
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        idx = Math.max(idx - 1, 0);
-        focusables[idx].focus();
-        break;
-      case 'Enter':
-        if (document.activeElement === videoElement || document.activeElement === iframeElement) {
-          toggleFullscreen();
+        toggleFullscreen();
+        return;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // NAVEGACIÓN ESPACIAL 2D D-PAD (UP / DOWN / LEFT / RIGHT)
+    // -------------------------------------------------------------
+    e.preventDefault();
+
+    // Obtener la lista de elementos enfocables disponibles según el contexto
+    let focusableScope = [];
+    if (activeModal) {
+      focusableScope = Array.from(activeModal.querySelectorAll('.focusable, button, input, select, textarea'));
+    } else {
+      focusableScope = Array.from(document.querySelectorAll('.app-header .focusable, .channels-column .focusable, .player-column .focusable, .channel-card'));
+    }
+
+    // Filtrar únicamente los elementos visibles en pantalla
+    focusableScope = focusableScope.filter(el => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
+    });
+
+    if (focusableScope.length === 0) return;
+
+    let current = document.activeElement;
+
+    // Si nada está enfocado o el foco se perdió, asignar foco inicial
+    if (!current || !focusableScope.includes(current)) {
+      setInitialTVFocus();
+      return;
+    }
+
+    // Navegación rápida entre categorías con flechas izquierda/derecha desde las flechas
+    if (current.id === 'cat-prev-btn' && isLeft) {
+      prevCategory();
+      return;
+    }
+    if (current.id === 'cat-next-btn' && isRight) {
+      nextCategory();
+      return;
+    }
+
+    // NAVEGACIÓN ESPACIAL 2D (Algoritmo de vecino más cercano por geometría)
+    const currentRect = current.getBoundingClientRect();
+    let bestCandidate = null;
+    let minDistance = Infinity;
+
+    focusableScope.forEach(cand => {
+      if (cand === current) return;
+      const candRect = cand.getBoundingClientRect();
+
+      let isCandidateInDirection = false;
+      let primaryDiff = 0;
+      let secondaryDiff = 0;
+
+      if (isUp) {
+        isCandidateInDirection = candRect.bottom <= currentRect.top + 8;
+        primaryDiff = currentRect.top - candRect.bottom;
+        secondaryDiff = Math.abs((currentRect.left + currentRect.width / 2) - (candRect.left + candRect.width / 2));
+      } else if (isDown) {
+        isCandidateInDirection = candRect.top >= currentRect.bottom - 8;
+        primaryDiff = candRect.top - currentRect.bottom;
+        secondaryDiff = Math.abs((currentRect.left + currentRect.width / 2) - (candRect.left + candRect.width / 2));
+      } else if (isLeft) {
+        isCandidateInDirection = candRect.right <= currentRect.left + 8;
+        primaryDiff = currentRect.left - candRect.right;
+        secondaryDiff = Math.abs((currentRect.top + currentRect.height / 2) - (candRect.top + candRect.height / 2));
+      } else if (isRight) {
+        isCandidateInDirection = candRect.left >= currentRect.right - 8;
+        primaryDiff = candRect.left - currentRect.right;
+        secondaryDiff = Math.abs((currentRect.top + currentRect.height / 2) - (candRect.top + candRect.height / 2));
+      }
+
+      if (isCandidateInDirection) {
+        const distance = primaryDiff + secondaryDiff * 2.5;
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestCandidate = cand;
         }
-        break;
-      case 'Escape':
-      case 'BackSpace':
-        if (document.fullscreenElement) {
-          toggleFullscreen();
-        } else {
-          closeAllModals();
-        }
-        break;
+      }
+    });
+
+    if (bestCandidate) {
+      bestCandidate.focus();
+      bestCandidate.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     }
   });
 }

@@ -879,3 +879,173 @@ body.is-fullscreen .fullscreen-hint {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.15);
 }
+
+/* ==========================================================================
+   INTERFAZ MODO TV (ANDROID TV, GOOGLE TV, SMART TV) - MODULAR
+   ========================================================================== */
+
+/* Resaltado de Foco Ultra-Visible con Anillo Rojo Neón para Control Remoto */
+.is-tv-mode .focusable:focus,
+.is-tv-mode .channel-card:focus,
+.is-tv-mode .icon-btn:focus,
+.is-tv-mode .cat-arrow-btn:focus,
+.is-tv-mode .btn-side-control-small:focus,
+.is-tv-mode .btn-primary:focus,
+.is-tv-mode .btn-secondary:focus,
+.is-tv-mode .btn-danger:focus,
+.is-tv-mode .btn-pwa-primary:focus,
+.is-tv-mode .btn-pwa-secondary:focus,
+.is-tv-mode .form-input:focus,
+.is-tv-mode .form-select:focus,
+.is-tv-mode .form-textarea:focus,
+.is-tv-mode .modal-close-btn:focus {
+  outline: none !important;
+  border-color: #ff0033 !important;
+  box-shadow: 0 0 0 4px #ff0033, 0 0 30px rgba(255, 0, 51, 0.95) !important;
+  transform: scale(1.05) !important;
+  z-index: 1000 !important;
+  background: rgba(204, 0, 0, 0.45) !important;
+  color: #ffffff !important;
+}
+
+/* Foco específico para tarjetas de canal en Android TV */
+.is-tv-mode .channel-card:focus {
+  background: linear-gradient(90deg, #dd0000 0%, #800020 100%) !important;
+  border-color: #ff3355 !important;
+  transform: scale(1.03) translateX(8px) !important;
+}
+
+.is-tv-mode .channel-card:focus .channel-num,
+.is-tv-mode .channel-card:focus .channel-name,
+.is-tv-mode .channel-card:focus .channel-epg-text {
+  color: #ffffff !important;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.9);
+}
+
+/* Ocultar cursor de ratón táctil en Android TV */
+.is-tv-mode,
+.is-tv-mode * {
+  cursor: none !important;
+}
+
+/* Escalamiento 10-Foot UI para Televisores */
+.is-tv-mode .app-header {
+  height: 56px;
+  padding: 0.5rem 1.8rem;
+}
+
+.is-tv-mode .brand-logo-img {
+  width: 34px;
+  height: 34px;
+}
+
+.is-tv-mode .header-clock-text {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.is-tv-mode .icon-btn {
+  width: 38px;
+  height: 38px;
+  font-size: 1.2rem;
+}
+
+.is-tv-mode .main-layout {
+  grid-template-columns: 380px 1fr;
+  gap: 1.25rem;
+  padding: 0.85rem 1.8rem;
+  height: calc(100vh - 58px);
+}
+
+.is-tv-mode .category-nav-bar {
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+}
+
+.is-tv-mode .cat-current-title {
+  font-size: 1.3rem;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.is-tv-mode .cat-arrow-btn {
+  font-size: 1.7rem;
+  padding: 0 1rem;
+}
+
+.is-tv-mode .channels-grid {
+  gap: 0.45rem;
+}
+
+.is-tv-mode .channel-card {
+  min-height: 54px;
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+}
+
+.is-tv-mode .channel-num {
+  font-size: 1.05rem;
+  min-width: 32px;
+}
+
+.is-tv-mode .channel-logo-wrapper {
+  width: 52px;
+  height: 38px;
+  min-width: 52px;
+  min-height: 38px;
+}
+
+.is-tv-mode .channel-name {
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.is-tv-mode .channel-epg-text {
+  font-size: 0.78rem;
+}
+
+.is-tv-mode .player-card {
+  border-radius: 12px;
+  border-width: 2px;
+}
+
+.is-tv-mode .player-controls-compact-bar {
+  padding: 0.4rem 0.85rem;
+  min-height: 42px;
+}
+
+.is-tv-mode .live-badge-red {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.is-tv-mode .side-channel-title {
+  font-size: 1.05rem;
+}
+
+.is-tv-mode .btn-side-control-small {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.is-tv-mode .epg-info-bar {
+  font-size: 0.9rem;
+  padding: 0.45rem 0.85rem;
+}
+
+.tv-mode-badge {
+  position: fixed;
+  bottom: 12px;
+  left: 18px;
+  background: rgba(139, 0, 0, 0.85);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+  z-index: 999;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
