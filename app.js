@@ -517,10 +517,31 @@ function parseEmbedOrStreamUrl(input) {
   return { type: 'video', url: input };
 }
 
+function showChannelLoadingOverlay(channelName = '') {
+  const overlay = document.getElementById('channel-loading-overlay');
+  const nameEl = document.getElementById('loading-channel-name');
+  if (nameEl && channelName) {
+    nameEl.textContent = channelName;
+  }
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.style.display = 'flex';
+  }
+}
+
+function hideChannelLoadingOverlay() {
+  const overlay = document.getElementById('channel-loading-overlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.style.display = 'none';
+  }
+}
+
 function playChannel(channel) {
   activeChannel = channel;
   reconnectAttempts = 0;
   hideReconnectOverlay();
+  showChannelLoadingOverlay(channel.name);
 
   if (sideChannelTitle) sideChannelTitle.textContent = channel.name;
   if (epgDescElement) epgDescElement.textContent = `Transmisión en vivo en alta definición de ${channel.name} • Proari Systems`;
@@ -541,6 +562,9 @@ function playChannel(channel) {
     if (iframeElement) {
       iframeElement.style.display = 'block';
       iframeElement.src = parsed.url;
+      iframeElement.onload = () => {
+        setTimeout(hideChannelLoadingOverlay, 500);
+      };
     }
   } else {
     if (iframeElement) {
@@ -627,6 +651,13 @@ function ensureAudioUnlocked(video) {
 
 function setupVideoEvents() {
   if (videoElement) {
+    videoElement.addEventListener('playing', hideChannelLoadingOverlay);
+    videoElement.addEventListener('loadeddata', hideChannelLoadingOverlay);
+    videoElement.addEventListener('canplay', hideChannelLoadingOverlay);
+    videoElement.addEventListener('waiting', () => {
+      showChannelLoadingOverlay(activeChannel ? activeChannel.name : '');
+    });
+
     videoElement.addEventListener('error', () => triggerAutoReconnect());
     videoElement.addEventListener('stalled', () => {
       if (!isReconnecting) triggerAutoReconnect();
