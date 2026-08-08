@@ -780,9 +780,37 @@ function setupEventListeners() {
     });
   }
 
-  const btnConfig = document.getElementById('btn-config');
-  if (btnConfig) {
-    btnConfig.addEventListener('click', openAuthModal);
+  // Botón Compartir Sistema IPTV
+  const btnShare = document.getElementById('btn-share-app');
+  if (btnShare) {
+    btnShare.addEventListener('click', async () => {
+      const shareUrl = window.location.href;
+      const shareData = {
+        title: 'TV DIGITAL LIBRE | IPTV Live',
+        text: 'Mira televisión digital libre IPTV en vivo por Proari Systems.',
+        url: shareUrl
+      };
+
+      if (navigator.share) {
+        try {
+          await navigator.share(shareData);
+          console.log('[Share] Contenido compartido exitosamente');
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            copyToClipboard(shareUrl);
+          }
+        }
+      } else {
+        copyToClipboard(shareUrl);
+      }
+    });
+  }
+
+  // Acceso de administración por doble clic en el Logo
+  const brandContainer = document.querySelector('.brand-container');
+  if (brandContainer) {
+    brandContainer.style.cursor = 'pointer';
+    brandContainer.addEventListener('dblclick', openAuthModal);
   }
 
   const btnSync = document.getElementById('btn-sync-app');
@@ -1169,6 +1197,18 @@ function setupTVNavigation() {
       bestCandidate.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     }
   });
+}
+
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showNotificationToast('🔗 ¡Enlace del sistema copiado al portapapeles!');
+    }).catch(() => {
+      showNotificationToast('🔗 Enlace: ' + text);
+    });
+  } else {
+    showNotificationToast('🔗 Enlace: ' + text);
+  }
 }
 
 function showNotificationToast(message) {
