@@ -191,13 +191,46 @@ function initPWA() {
   const pwaModal = document.getElementById('pwa-install-modal');
   const btnInstallModal = document.getElementById('btn-pwa-install-modal');
   const btnDismissModal = document.getElementById('btn-pwa-dismiss');
+  const btnHeaderInstall = document.getElementById('btn-pwa-header');
   const browserInstructions = document.getElementById('pwa-browser-instructions');
 
-  // Si la app ya está instalada y ejecutándose en modo Standalone, no mostrar modal
+  // Si la app ya está instalada y ejecutándose en modo Standalone, no mostrar modal ni botón de cabecera
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (isStandalone) {
     console.log('[PWA] Ejecutando en modo App Standalone instalada.');
+    if (btnHeaderInstall) btnHeaderInstall.style.display = 'none';
     return;
+  }
+
+  const triggerDirectInstall = async () => {
+    if (deferredPrompt) {
+      try {
+        console.log('[PWA] Disparando diálogo nativo de instalación directa...');
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`[PWA] Resultado de usuario: ${outcome}`);
+        if (outcome === 'accepted') {
+          showNotificationToast('🎉 ¡Gracias por instalar TV DIGITAL LIBRE!');
+          if (btnHeaderInstall) btnHeaderInstall.style.display = 'none';
+        }
+      } catch (err) {
+        console.error('[PWA] Error durante prompt:', err);
+      } finally {
+        deferredPrompt = null;
+        if (pwaModal) pwaModal.classList.remove('active');
+      }
+    } else {
+      if (pwaModal) pwaModal.classList.add('active');
+      if (browserInstructions) {
+        browserInstructions.classList.remove('hidden');
+      }
+      showNotificationToast('📲 Sigue las instrucciones en pantalla o usa el menú de tu navegador.');
+    }
+  };
+
+  // Botón directo en la Cabecera Principal (📲 INSTALAR APP)
+  if (btnHeaderInstall) {
+    btnHeaderInstall.addEventListener('click', triggerDirectInstall);
   }
 
   const isDismissed = sessionStorage.getItem('pwa_prompt_dismissed') === 'true';
@@ -209,33 +242,9 @@ function initPWA() {
     }, 400);
   }
 
-  // Acción al hacer clic en '📲 Instalar Aplicación' (Ejecución Inmediata)
+  // Acción al hacer clic en '📲 Instalar Aplicación' del Modal
   if (btnInstallModal) {
-    btnInstallModal.addEventListener('click', async () => {
-      if (deferredPrompt) {
-        try {
-          console.log('[PWA] Disparando diálogo nativo de instalación...');
-          deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          console.log(`[PWA] Resultado de usuario: ${outcome}`);
-          if (outcome === 'accepted') {
-            showNotificationToast('🎉 ¡Gracias por instalar TV DIGITAL LIBRE!');
-          }
-        } catch (err) {
-          console.error('[PWA] Error durante prompt:', err);
-        } finally {
-          deferredPrompt = null;
-          if (pwaModal) pwaModal.classList.remove('active');
-        }
-      } else {
-        // Si el navegador no permite disparo programático sin menú manual (e.g. Safari o navegador móvil)
-        if (browserInstructions) {
-          browserInstructions.classList.remove('hidden');
-          browserInstructions.style.animation = 'shake 0.4s ease';
-        }
-        showNotificationToast('📲 Sigue las instrucciones en pantalla o usa el menú de tu navegador.');
-      }
-    });
+    btnInstallModal.addEventListener('click', triggerDirectInstall);
   }
 
   if (btnDismissModal) {
