@@ -187,90 +187,6 @@ function initPWA() {
       .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
       .catch(err => console.warn('[PWA] Error Service Worker:', err));
   }
-
-  const pwaModal = document.getElementById('pwa-install-modal');
-  const btnInstallModal = document.getElementById('btn-pwa-install-modal');
-  const btnDismissModal = document.getElementById('btn-pwa-dismiss');
-  const btnHeaderInstall = document.getElementById('btn-pwa-header');
-  const browserInstructions = document.getElementById('pwa-browser-instructions');
-
-  // Si la app ya está instalada y ejecutándose en modo Standalone, no mostrar modal ni botón de cabecera
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  if (isStandalone) {
-    console.log('[PWA] Ejecutando en modo App Standalone instalada.');
-    if (btnHeaderInstall) btnHeaderInstall.style.display = 'none';
-    return;
-  }
-
-  // Comprobar contador de rechazos acumulados (Máximo 3 rechazos)
-  let dismissCount = parseInt(localStorage.getItem('pwa_dismiss_count') || '0', 10);
-  const neverShow = localStorage.getItem('pwa_never_show') === 'true' || dismissCount >= 3;
-
-  const registerDismissal = () => {
-    dismissCount += 1;
-    localStorage.setItem('pwa_dismiss_count', dismissCount.toString());
-    sessionStorage.setItem('pwa_prompt_dismissed', 'true');
-
-    if (dismissCount >= 3) {
-      localStorage.setItem('pwa_never_show', 'true');
-      console.log('[PWA] Límite alcanzado: 3 rechazos registrados. No se volverá a mostrar la invitación de instalación.');
-    } else {
-      console.log(`[PWA] Invitación de instalación rechazada/descartada (${dismissCount}/3).`);
-    }
-
-    if (pwaModal) pwaModal.classList.remove('active');
-  };
-
-  const triggerDirectInstall = async () => {
-    if (deferredPrompt) {
-      try {
-        console.log('[PWA] Disparando diálogo nativo de instalación directa...');
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`[PWA] Resultado de usuario: ${outcome}`);
-        if (outcome === 'accepted') {
-          showNotificationToast('🎉 ¡Gracias por instalar TV DIGITAL LIBRE!');
-          if (btnHeaderInstall) btnHeaderInstall.style.display = 'none';
-        } else if (outcome === 'dismissed') {
-          registerDismissal();
-        }
-      } catch (err) {
-        console.error('[PWA] Error durante prompt:', err);
-      } finally {
-        deferredPrompt = null;
-        if (pwaModal) pwaModal.classList.remove('active');
-      }
-    } else {
-      if (pwaModal) pwaModal.classList.add('active');
-      if (browserInstructions) {
-        browserInstructions.classList.remove('hidden');
-      }
-      showNotificationToast('📲 Sigue las instrucciones en pantalla o usa el menú de tu navegador.');
-    }
-  };
-
-  // Botón directo en la Cabecera Principal (📲 INSTALAR APP) si estuviera activo
-  if (btnHeaderInstall) {
-    btnHeaderInstall.addEventListener('click', triggerDirectInstall);
-  }
-
-  const isSessionDismissed = sessionStorage.getItem('pwa_prompt_dismissed') === 'true';
-
-  // Desplegar modal al ingresar si NO está instalada, NO se ha alcanzado el límite de 3 rechazos y NO se descartó en la sesión activa
-  if (!isStandalone && !neverShow && !isSessionDismissed && pwaModal) {
-    setTimeout(() => {
-      pwaModal.classList.add('active');
-    }, 400);
-  }
-
-  // Acción al hacer clic en '📲 Instalar Aplicación' del Modal
-  if (btnInstallModal) {
-    btnInstallModal.addEventListener('click', triggerDirectInstall);
-  }
-
-  if (btnDismissModal) {
-    btnDismissModal.addEventListener('click', registerDismissal);
-  }
 }
 
 /* ==========================================================================
@@ -751,17 +667,25 @@ function hideReconnectOverlay() {
 
 function toggleFullscreen() {
   const container = document.getElementById('player-container') || videoElement;
-  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-    if (container.requestFullscreen) {
-      container.requestFullscreen();
-    } else if (container.webkitRequestFullscreen) {
-      container.webkitRequestFullscreen();
-    }
+  if (!container) return;
+
+  const isFS = container.classList.contains('is-fullscreen') || !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const btnFS = document.getElementById('btn-fullscreen');
+
+  if (!isFS) {
+    container.classList.add('is-fullscreen');
+    document.body.classList.add('is-fullscreen');
+    if (btnFS) btnFS.innerHTML = '🗗 Reducir';
   } else {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
+    container.classList.remove('is-fullscreen');
+    document.body.classList.remove('is-fullscreen');
+    if (btnFS) btnFS.innerHTML = '🗖 Expandir';
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen().catch(() => {});
+      }
     }
   }
 }
@@ -772,6 +696,15 @@ function toggleFullscreen() {
 
 function setupEventListeners() {
   setupVideoEvents();
+
+  // Botón flotante para salir de Pantalla Completa
+  const btnExitFloating = document.getElementById('btn-exit-fullscreen-floating');
+  if (btnExitFloating) {
+    btnExitFloating.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFullscreen();
+    });
+  }
 
   // Botón Volver (Header)
   const btnBack = document.getElementById('btn-back');
@@ -1085,7 +1018,9 @@ function setupTVNavigation() {
       }
 
       // 3. Si el reproductor está en Pantalla Completa, salir
-      if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+      const playerCard = document.getElementById('player-container');
+      const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement || (playerCard && playerCard.classList.contains('is-fullscreen')));
+      if (isFS) {
         toggleFullscreen();
         return;
       }

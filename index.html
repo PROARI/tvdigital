@@ -88,6 +88,7 @@
       
       <!-- Contenedor del Reproductor (Ocupa el máximo espacio posible) -->
       <div id="player-container" class="player-card">
+        <button id="btn-exit-fullscreen-floating" class="fullscreen-exit-btn focusable" title="Salir de Pantalla Completa">✕ Salir</button>
         <video id="video-player" class="focusable" tabindex="0" playsinline autoplay></video>
         <iframe id="iframe-player" class="focusable" tabindex="0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="display: none;"></iframe>
 
@@ -244,39 +245,6 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL CENTRADO DE INSTALACIÓN PWA (AL INGRESAR AL ENLACE PRINCIPAL)
-       ========================================================================== -->
-  <div id="pwa-install-modal" class="modal-backdrop">
-    <div class="pwa-modal-box">
-      <div class="pwa-logo-wrapper">
-        <img src="logo.jpg" alt="TV DIGITAL LIBRE Logo" class="pwa-app-logo">
-      </div>
-      <h3 class="pwa-title">Instalar TV DIGITAL LIBRE</h3>
-      <div class="pwa-subtitle">Proari Systems &bull; Televisión Digital Libre IPTV</div>
-      <p class="pwa-description">
-        Instala la aplicación en tu dispositivo para ingresar directamente en modo horizontal, reproducir sin barras de navegador y disfrutar de la mejor experiencia de televisión en vivo.
-      </p>
-
-      <!-- Instrucciones de Instalación para Navegadores -->
-      <div id="pwa-browser-instructions" class="pwa-ios-instructions hidden">
-        <p id="pwa-instructions-title" style="font-weight: 700; color: #fff; margin-bottom: 4px;">Instrucciones de Instalación:</p>
-        <ol id="pwa-instructions-list" style="text-align: left; font-size: 0.82rem; color: #cbd5e1; padding-left: 1.2rem;">
-          <li>Presiona el menú de opciones de tu navegador (<strong>⋮</strong> o <strong>Compartir</strong>).</li>
-          <li>Selecciona <strong>"Instalar aplicación"</strong> o <strong>"Agregar a inicio"</strong>.</li>
-        </ol>
-      </div>
-
-      <div class="pwa-actions">
-        <button id="btn-pwa-install-modal" class="btn-pwa-primary focusable">
-          <span>📲 Instalar Aplicación</span>
-        </button>
-        <button id="btn-pwa-dismiss" class="btn-pwa-secondary focusable">
-          <span>Usar en Navegador</span>
-        </button>
-      </div>
-    </div>
-  </div>
 
   <!-- TOAST NOTIFICATIONS -->
   <div id="toast-notification" class="toast-notification"></div>
