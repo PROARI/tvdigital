@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tv-digital-libre-v2';
+const CACHE_NAME = 'tv-digital-libre-v5';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

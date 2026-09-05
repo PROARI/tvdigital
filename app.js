@@ -24,6 +24,9 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 let reconnectTimer = null;
 let isReconnecting = false;
 
+// Control de Temporizador de Botón Salir en Pantalla Completa
+let exitBtnTimer = null;
+
 // Captura global inmediata del evento de instalación PWA (antes de DOMContentLoaded)
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -592,7 +595,33 @@ function ensureAudioUnlocked(video) {
   }
 }
 
+function resetExitButtonTimer() {
+  const playerCard = document.getElementById('player-container');
+  const btnExit = document.getElementById('btn-exit-fullscreen-floating');
+  if (!playerCard || !btnExit) return;
+
+  const isFS = playerCard.classList.contains('is-fullscreen') || !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+
+  if (!isFS) {
+    clearTimeout(exitBtnTimer);
+    btnExit.classList.remove('fade-out');
+    return;
+  }
+
+  btnExit.classList.remove('fade-out');
+  clearTimeout(exitBtnTimer);
+
+  exitBtnTimer = setTimeout(() => {
+    const isStillFS = playerCard.classList.contains('is-fullscreen') || !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+    if (isStillFS) {
+      btnExit.classList.add('fade-out');
+    }
+  }, 3000);
+}
+
 function setupVideoEvents() {
+  const playerCard = document.getElementById('player-container');
+
   if (videoElement) {
     videoElement.addEventListener('playing', hideChannelLoadingOverlay);
     videoElement.addEventListener('loadeddata', hideChannelLoadingOverlay);
@@ -605,23 +634,53 @@ function setupVideoEvents() {
     videoElement.addEventListener('stalled', () => {
       if (!isReconnecting) triggerAutoReconnect();
     });
-    videoElement.addEventListener('dblclick', toggleFullscreen);
+
+    videoElement.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      toggleFullscreen();
+    });
   }
 
-  const playerCard = document.getElementById('player-container');
   if (playerCard) {
-    playerCard.addEventListener('dblclick', toggleFullscreen);
+    playerCard.addEventListener('dblclick', (e) => {
+      if (e.target.closest('#btn-exit-fullscreen-floating')) return;
+      e.preventDefault();
+      toggleFullscreen();
+    });
+
+    let lastPlayerTap = 0;
+    playerCard.addEventListener('touchend', (e) => {
+      if (e.target.closest('#btn-exit-fullscreen-floating')) return;
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastPlayerTap;
+      if (tapLength < 300 && tapLength > 0) {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+      lastPlayerTap = currentTime;
+    });
+
+    playerCard.addEventListener('mousemove', resetExitButtonTimer);
+    playerCard.addEventListener('click', resetExitButtonTimer);
+    playerCard.addEventListener('touchstart', resetExitButtonTimer, { passive: true });
   }
 
   const handleFullscreenChange = () => {
     const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+    const btnFS = document.getElementById('btn-fullscreen');
     if (playerCard) {
       if (isFS) {
         playerCard.classList.add('is-fullscreen');
         document.body.classList.add('is-fullscreen');
+        if (btnFS) btnFS.innerHTML = '🗗 Reducir';
+        resetExitButtonTimer();
       } else {
         playerCard.classList.remove('is-fullscreen');
         document.body.classList.remove('is-fullscreen');
+        if (btnFS) btnFS.innerHTML = '🗖 Expandir';
+        clearTimeout(exitBtnTimer);
+        const btnExitFloating = document.getElementById('btn-exit-fullscreen-floating');
+        if (btnExitFloating) btnExitFloating.classList.remove('fade-out');
       }
     }
   };
@@ -669,22 +728,39 @@ function toggleFullscreen() {
   const container = document.getElementById('player-container') || videoElement;
   if (!container) return;
 
-  const isFS = container.classList.contains('is-fullscreen') || !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const isFS = container.classList.contains('is-fullscreen') || !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
   const btnFS = document.getElementById('btn-fullscreen');
 
   if (!isFS) {
     container.classList.add('is-fullscreen');
     document.body.classList.add('is-fullscreen');
     if (btnFS) btnFS.innerHTML = '🗗 Reducir';
+    resetExitButtonTimer();
+
+    if (container.requestFullscreen) {
+      container.requestFullscreen().catch(() => {});
+    } else if (container.webkitRequestFullscreen) {
+      container.webkitRequestFullscreen().catch(() => {});
+    } else if (container.msRequestFullscreen) {
+      container.msRequestFullscreen().catch(() => {});
+    }
   } else {
     container.classList.remove('is-fullscreen');
     document.body.classList.remove('is-fullscreen');
     if (btnFS) btnFS.innerHTML = '🗖 Expandir';
-    if (document.fullscreenElement || document.webkitFullscreenElement) {
+    clearTimeout(exitBtnTimer);
+    const btnExitFloating = document.getElementById('btn-exit-fullscreen-floating');
+    if (btnExitFloating) btnExitFloating.classList.remove('fade-out');
+
+    if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
       if (document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
       } else if (document.webkitExitFullscreen) {
         document.webkitExitFullscreen().catch(() => {});
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen().catch(() => {});
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen().catch(() => {});
       }
     }
   }
